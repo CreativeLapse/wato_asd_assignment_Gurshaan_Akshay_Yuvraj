@@ -11,8 +11,10 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # Search for dependencies required for building this package
-find_package(ament_cmake REQUIRED) # ROS2 build tool
-find_package(rclcpp REQUIRED)      # ROS2 C++ package
+find_package(ament_cmake REQUIRED)   # ROS2 build tool
+find_package(rclcpp REQUIRED)        # ROS2 C++ package
+find_package(sensor_msgs REQUIRED)   # LaserScan
+find_package(nav_msgs REQUIRED)      # OccupancyGrid
 
 # Compiles source files into a library
 # A library is not executed, instead other executables can link
@@ -25,12 +27,20 @@ add_library(costmap_lib
 target_include_directories(costmap_lib
   PUBLIC include)
 # Add ROS2 dependencies required by package
-ament_target_dependencies(costmap_lib rclcpp)
+ament_target_dependencies(costmap_lib rclcpp sensor_msgs nav_msgs)
 
 # Create ROS2 node executable from source files
 add_executable(costmap_node src/costmap_node.cpp)
 # Link to the previously built library to access costmap classes and methods
 target_link_libraries(costmap_node costmap_lib)
+
+# Unit tests for the core library (colcon test)
+option(BUILD_TESTING "Build tests" ON)
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(costmap_test test/costmap_test.cpp)
+  target_link_libraries(costmap_test costmap_lib)
+endif()
 
 # Copy executable to installation location
 install(TARGETS

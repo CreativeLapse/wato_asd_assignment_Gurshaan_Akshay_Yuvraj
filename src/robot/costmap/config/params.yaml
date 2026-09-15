@@ -1,3 +1,10 @@
-# costmap_node:
-#   ros__parameters:
+costmap_node:
+  ros__parameters:
+    laserscan_topic: "/lidar"   # LaserScan input
+    costmap_topic: "/costmap"   # OccupancyGrid output, in the laser frame
 
+    costmap:
+      resolution: 0.4       # m per cell (finer than the global map)
+      width: 120            # cells -> 48 m across, robot in the centre
+      height: 120
+      inflation_radius: 1.0 # m, cost falls off linearly to 0 at this distance
