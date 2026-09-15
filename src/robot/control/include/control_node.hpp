@@ -15,7 +15,7 @@
 // on a fixed timer.
 class ControlNode : public rclcpp::Node {
   public:
-    ControlNode();
+    explicit ControlNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   private:
     void loadParameters();
@@ -42,6 +42,7 @@ class ControlNode : public rclcpp::Node {
     double goal_tolerance_;
     double turn_in_place_angle_;
     double slowdown_distance_;
+    double odometry_forward_offset_;
 
     bool have_odom_;
     double robot_x_;

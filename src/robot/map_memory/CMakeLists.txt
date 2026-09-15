@@ -41,6 +41,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(map_memory_test test/map_memory_test.cpp)
   target_link_libraries(map_memory_test map_memory_lib)
+  ament_add_gtest(map_memory_node_test test/map_memory_node_test.cpp src/map_memory_node.cpp
+    ENV ROS_DOMAIN_ID=43)
+  target_compile_definitions(map_memory_node_test PRIVATE WATO_NODE_NO_MAIN)
+  target_link_libraries(map_memory_node_test map_memory_lib)
 endif()
 
 # Copy executable to installation location

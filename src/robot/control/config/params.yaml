@@ -4,10 +4,11 @@ control_node:
     odom_topic: "/odom/filtered"  # Odometry input
     cmd_vel_topic: "/cmd_vel"     # Twist output to the robot
 
-    control_period_ms: 100     # ms, 10 Hz control loop
+    control_period_ms: 50      # ms, 20 Hz control loop
     lookahead_distance: 1.0    # m, how far ahead on the path to aim
-    linear_speed: 0.5          # m/s, cruising speed
+    linear_speed: 0.8          # m/s, cruising speed; reduced on tight curves
     max_angular_speed: 1.0     # rad/s, turning rate limit
     goal_tolerance: 0.2        # m, stop when this close to the path's end
     turn_in_place_angle: 0.8   # rad, spin without driving above this heading error
-    slowdown_distance: 1.0     # m, start easing off this far from the end
+    slowdown_distance: 1.6     # m, start easing off this far from the end
+    odometry_forward_offset: 1.3 # m, lidar ahead of the wheel axle

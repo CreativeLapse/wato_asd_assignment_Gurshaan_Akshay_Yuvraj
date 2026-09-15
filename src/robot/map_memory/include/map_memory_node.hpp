@@ -2,6 +2,7 @@
 #define MAP_MEMORY_NODE_HPP_
 
 #include <string>
+#include <deque>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
@@ -14,13 +15,14 @@
 // far enough, and republishes that map on a timer.
 class MapMemoryNode : public rclcpp::Node {
   public:
-    MapMemoryNode();
+    explicit MapMemoryNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   private:
     void loadParameters();
     void onCostmap(const nav_msgs::msg::OccupancyGrid::SharedPtr costmap);
     void onOdom(const nav_msgs::msg::Odometry::SharedPtr odom);
     void publishMap();
+    void tryFusePendingCostmap();
 
     static double yawFromQuaternion(const geometry_msgs::msg::Quaternion& q);
 
@@ -37,7 +39,10 @@ class MapMemoryNode : public rclcpp::Node {
     std::string map_frame_;
     int publish_period_ms_;
     double update_distance_;
+    double update_angle_;
+    double max_update_interval_;
     double resolution_;
+    double inflation_radius_;
     int width_;
     int height_;
     double origin_x_;
@@ -53,6 +58,10 @@ class MapMemoryNode : public rclcpp::Node {
     bool have_fused_;
     double last_fuse_x_;
     double last_fuse_y_;
+    double last_fuse_yaw_ = 0.0;
+    int64_t last_fuse_stamp_ = 0;
+    std::deque<nav_msgs::msg::Odometry> odom_history_;
+    nav_msgs::msg::OccupancyGrid::SharedPtr pending_costmap_;
 };
 
 #endif  // MAP_MEMORY_NODE_HPP_

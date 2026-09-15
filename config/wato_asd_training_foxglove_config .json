@@ -116,7 +116,7 @@
           "alpha": 0.5016
         },
         "/costmap": {
-          "visible": true,
+          "visible": false,
           "colorMode": "costmap",
           "alpha": 1
         },

@@ -7,19 +7,28 @@ Foxglove while avoiding the walls, boxes and cylinders in the arena. The
 software is four ROS 2 Humble nodes that pass data down a pipeline:
 
 ```
-/lidar ──▶ costmap ──▶ /costmap ──▶ map_memory ──▶ /map ──▶ planner ──▶ /path ──▶ control ──▶ /cmd_vel
-                                        ▲                      ▲                     ▲
-                                        └──────── /odom/filtered (odometry_spoof) ───┘
+/lidar ──▶ costmap ──▶ /local_obstacles ──▶ map_memory ──▶ /map ──▶ planner ──▶ /path ──▶ control ──▶ /cmd_vel
 ```
+
+Map memory, planning, and control also receive `/odom/filtered` from
+`odometry_spoof`. The local `/costmap` remains available for visualization;
+the planner uses the globally inflated `/map`.
 
 | Node | Package | What it does |
 |---|---|---|
-| **costmap** | `src/robot/costmap` | Turns each laser scan into a 48 m × 48 m grid centred on the robot (0.4 m cells). Beams are ray-traced to mark free space, hits become obstacles, and every obstacle gets a linear inflation band. |
-| **map_memory** | `src/robot/map_memory` | Stitches costmaps into a fixed 30 m × 30 m world map (0.5 m cells). It fuses a new costmap every 1.5 m of travel, walking the global cells under the rotated local window so the coarser map never has holes. Newer known values overwrite older ones; unknown never erases. |
-| **planner** | `src/robot/planner` | A* over the world map: 8-connected, Euclidean heuristic, no corner cutting, and a step cost that rises with cell cost so paths hug open space. Unknown cells are drivable. A goal that lands on an obstacle snaps to the nearest open cell. Replans whenever the map changes, gives up after 60 s. |
-| **control** | `src/robot/control` | Pure pursuit: chases the path point 1 m ahead along a circular arc, spins in place if the target is far off-heading, slows down near the end, and stops on arrival or when the path is cleared. |
+| **costmap** | `src/robot/costmap` | Turns each laser scan into a 48 m × 48 m grid centred on the sensor (0.4 m cells). Ray tracing produces raw free/occupied observations on `/local_obstacles`; `/costmap` adds a local inflation band for visualization. |
+| **map_memory** | `src/robot/map_memory` | Stitches raw observations into a fixed 30 m × 30 m world map (0.5 m cells), interpolating odometry at each scan's timestamp. Updates after 1.5 m of travel, a 0.2 rad turn, or 0.5 s, including while stopped. Remembers obstacles and rebuilds their inflation globally, so occluded obstacles keep their clearance. Newer known observations overwrite older ones; unknown never erases. |
+| **planner** | `src/robot/planner` | Shortest-distance A* on the 8-neighbour world grid (`cost_weight: 0.0`), with a Euclidean heuristic and no diagonal corner cutting. The 3.4 m inflation radius blocks about 1.7 m around obstacle cells at cost 50, measured from the wheel axle. Searches again on map changes and every 0.5 s while moving; replaces invalid or longer remaining routes and retains equal optima to avoid unnecessary switching. Unknown cells are drivable; blocked goals snap to open space. A temporary planning failure stops the robot and retains the goal for retry, with a 180 s overall deadline. |
+| **control** | `src/robot/control` | Pure pursuit at the wheel axle: converts the lidar odometry using its 1.3 m forward offset and follows a point 1 m ahead. Cruises at 0.8 m/s with a 20 Hz control loop, reduces speed to preserve tight turns within the 1 rad/s turning limit, spins when off-heading, and slows within 1.6 m of arrival. Planner and controller use the same axle position for goal completion. |
 | tf_throttle | `src/robot/tf_throttle` | Gazebo streams poses at 1 kHz; this republishes the newest transform per frame at 20 Hz on `/tf` so Foxglove stays responsive. |
 | odometry_spoof | `src/robot/odometry_spoof` | Provided by WATonomous: derives `/odom/filtered` from the simulator's TF. |
+
+The shortest-path guarantee is for distance between the resolved start and goal
+cells on the current 0.5 m grid, subject to its blocked cells and corner rules.
+Tests compare A* against an independent Dijkstra search on all 128 obstacle
+arrangements of a 3 × 3 grid with fixed open endpoints and 200 seeded larger maps.
+Several routes can tie for shortest distance. Unseen obstacles, continuous paths
+between grid directions, and driving time are outside this grid-distance guarantee.
 
 Each of the four main packages splits into a `*_core` library (pure algorithm,
 no ROS calls beyond logging) and a `*_node` executable (subscriptions,
@@ -46,7 +55,9 @@ tool in the 3D panel to click a goal; the robot plans a path and drives to it.
 
 ## Running the unit tests
 
-The core libraries have gtest suites (26 tests across the four packages).
+The core libraries and ROS node interactions have gtest suites, including
+regressions for route stability, retrying a saved goal, axle-based steering,
+and matching scans to odometry. The robot image build runs these tests.
 Inside the robot container:
 
 ```bash

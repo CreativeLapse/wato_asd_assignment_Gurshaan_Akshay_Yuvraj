@@ -41,6 +41,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(control_test test/control_test.cpp)
   target_link_libraries(control_test control_lib)
+  ament_add_gtest(control_node_test test/control_node_test.cpp src/control_node.cpp
+    ENV ROS_DOMAIN_ID=42)
+  target_compile_definitions(control_node_test PRIVATE WATO_NODE_NO_MAIN)
+  target_link_libraries(control_node_test control_lib)
 endif()
 
 # Copy executable to installation location

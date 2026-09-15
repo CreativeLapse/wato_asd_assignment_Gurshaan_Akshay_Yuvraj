@@ -2,9 +2,13 @@ costmap_node:
   ros__parameters:
     laserscan_topic: "/lidar"   # LaserScan input
     costmap_topic: "/costmap"   # OccupancyGrid output, in the laser frame
+    obstacles_topic: "/local_obstacles" # Raw observations for map memory
 
     costmap:
       resolution: 0.4       # m per cell (finer than the global map)
       width: 120            # cells -> 48 m across, robot in the centre
       height: 120
-      inflation_radius: 1.0 # m, cost falls off linearly to 0 at this distance
+      # Visualization mirrors the global map's inflation. The planner
+      # blocks about 1.7 m around obstacles, measured from the wheel axle;
+      # the body extends 1.5 m ahead and its front corners sweep 1.58 m.
+      inflation_radius: 3.4 # m, linear cost falloff

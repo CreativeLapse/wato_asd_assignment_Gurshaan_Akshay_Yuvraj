@@ -35,6 +35,33 @@ void setLocal(nav_msgs::msg::OccupancyGrid& local, int cx, int cy, int8_t value)
 
 }  // namespace
 
+TEST(MapMemoryTest, OccludedObstacleKeepsItsMarginWhenNearbySpaceIsSeenFree)
+{
+  robot::MapMemoryCore map(rclcpp::get_logger("map_memory_test"));
+  map.configure(0.5, 20, 20, -5.0, -5.0, 2.0);
+  auto local = makeLocal();
+  setLocal(local, 5, 5, 100);
+  map.fuse(local, 0.0, 0.0, 0.0);
+  EXPECT_EQ(map.cellCost(10, 10), 100);
+  EXPECT_EQ(map.cellCost(11, 10), 75);
+
+  // The obstacle is occluded. A beam only confirms its neighbour is empty;
+  // the robot's body still cannot fit there, so the route must stay blocked.
+  local = makeLocal();
+  setLocal(local, 6, 5, 0);
+  map.fuse(local, 0.0, 0.0, 0.0);
+  EXPECT_EQ(map.cellCost(10, 10), 100);
+  EXPECT_EQ(map.cellCost(11, 10), 75);
+
+  // When the obstacle itself is observed free, its inflation must disappear.
+  local = makeLocal();
+  setLocal(local, 5, 5, 0);
+  map.fuse(local, 0.0, 0.0, 0.0);
+  EXPECT_EQ(map.cellCost(10, 10), 0);
+  EXPECT_EQ(map.cellCost(11, 10), 0);
+  EXPECT_EQ(map.cellCost(12, 10), -1);
+}
+
 TEST(MapMemoryTest, StartsUnknown)
 {
   auto map = makeMap();

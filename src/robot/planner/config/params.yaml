@@ -6,9 +6,10 @@ planner_node:
     path_topic: "/path"           # Path output
 
     goal_tolerance: 0.5           # m, distance at which the goal counts as reached
-    plan_timeout_seconds: 60.0    # s, give up on a goal after this long
+    plan_timeout_seconds: 180.0   # s, allows full-arena detours and slower turns
+    odometry_forward_offset: 1.3  # m, lidar ahead of the wheel axle
 
     lethal_cost: 50    # cells with cost >= this are treated as walls
     unknown_cost: 30   # cost assumed for unexplored cells (still drivable)
-    cost_weight: 3.0   # step cost multiplier: distance * (1 + weight * cost/100)
+    cost_weight: 0.0   # shortest distance on the 8-neighbour grid; hard clearance still applies
     snap_radius: 10    # cells, how far to look for open space around a blocked goal

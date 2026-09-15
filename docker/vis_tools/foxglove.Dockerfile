@@ -1,7 +1,12 @@
 ARG BASE_IMAGE=ghcr.io/watonomous/robot_base/base:humble-ubuntu22.04
 
+# Refresh the ROS signing key bundled in the older base image.
+FROM ${BASE_IMAGE} AS ros_base
+RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
+
 ################################ Source ################################
-FROM ${BASE_IMAGE} AS source
+FROM ros_base AS source
 
 WORKDIR ${AMENT_WS}/src
 
@@ -16,7 +21,7 @@ RUN apt-get -qq update && rosdep update && \
         | sort  > /tmp/colcon_install_list
 
 ################################# Dependencies ################################
-FROM ${BASE_IMAGE} AS dependencies
+FROM ros_base AS dependencies
 
 # Install Foxglove Deps
 RUN apt-get update && apt-get install -y curl ros-humble-ros2bag ros-humble-rosbag2* ros-humble-foxglove-msgs&& \
@@ -37,6 +42,11 @@ RUN apt-get update && \
 # Install Rosdep requirements
 COPY --from=source /tmp/colcon_install_list /tmp/colcon_install_list
 RUN apt-fast install -qq -y --no-install-recommends $(cat /tmp/colcon_install_list)
+
+# The current bridge needs matching ROS type-support libraries, including
+# packages already installed in the older base image.
+RUN apt-get update && apt-get install -y --only-upgrade \
+    $(dpkg-query -W -f='${binary:Package} ' 'ros-humble-*')
 
 # Copy in source code from source stage
 WORKDIR ${AMENT_WS}

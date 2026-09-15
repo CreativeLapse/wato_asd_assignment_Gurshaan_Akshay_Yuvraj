@@ -10,11 +10,11 @@ namespace robot
 ControlCore::ControlCore(const rclcpp::Logger& logger)
   : logger_(logger),
     lookahead_distance_(1.0),
-    linear_speed_(0.5),
+    linear_speed_(0.8),
     max_angular_speed_(1.0),
     goal_tolerance_(0.2),
     turn_in_place_angle_(0.8),
-    slowdown_distance_(1.0) {}
+    slowdown_distance_(1.6) {}
 
 void ControlCore::configure(
   double lookahead_distance,
@@ -120,6 +120,11 @@ geometry_msgs::msg::Twist ControlCore::computeCommand(double robot_x, double rob
     : 1.0;
 
   cmd.linear.x = linear_speed_ * speed_scale;
+  // Reduce forward speed when a curve needs more than the allowed turning
+  // rate. Clamping angular speed alone would widen the arc into obstacles.
+  if (std::abs(curvature) > 1e-9) {
+    cmd.linear.x = std::min(cmd.linear.x, max_angular_speed_ / std::abs(curvature));
+  }
   cmd.angular.z = std::clamp(cmd.linear.x * curvature, -max_angular_speed_, max_angular_speed_);
   return cmd;
 }

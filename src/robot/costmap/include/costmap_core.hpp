@@ -32,6 +32,7 @@ class CostmapCore {
     void processScan(const sensor_msgs::msg::LaserScan& scan);
 
     const nav_msgs::msg::OccupancyGrid& grid() const { return grid_; }
+    const nav_msgs::msg::OccupancyGrid& obstacleGrid() const { return obstacle_grid_; }
 
     int8_t cellCost(int cx, int cy) const;
 
@@ -55,6 +56,7 @@ class CostmapCore {
     void inflate(const std::vector<std::pair<int, int>>& obstacles);
 
     nav_msgs::msg::OccupancyGrid grid_;
+    nav_msgs::msg::OccupancyGrid obstacle_grid_;
     std::vector<KernelCell> kernel_;
     double inflation_radius_;
     rclcpp::Logger logger_;

@@ -90,6 +90,23 @@ TEST(ControlTest, SpinsInPlaceWhenFacingAway)
   EXPECT_LE(cmd.angular.z, 1.0);        // respects max_angular_speed
 }
 
+TEST(ControlTest, FasterCruisePreservesTightTurnRadiusInBothDirections)
+{
+  auto control = makeController();
+  control.configure(1.0, 0.8, 1.0, 0.2, 0.8, 1.6);
+  for (const double direction : {-1.0, 1.0}) {
+    // First lookahead is (0.72, +/-0.70): driving at 0.8 m/s would
+    // require more than the 1 rad/s turn limit and cause understeering.
+    control.setPath(makePath(1.44, direction * 1.4));
+    const auto cmd = control.computeCommand(0.0, 0.0, 0.0);
+    const double curvature = direction * 1.4 / (0.72 * 0.72 + 0.7 * 0.7);
+    EXPECT_GT(cmd.linear.x, 0.0);
+    EXPECT_LT(cmd.linear.x, 0.8);
+    EXPECT_NEAR(cmd.angular.z, direction, 1e-9);
+    EXPECT_NEAR(cmd.angular.z / cmd.linear.x, curvature, 1e-9);
+  }
+}
+
 TEST(ControlTest, StopsAtGoal)
 {
   auto control = makeController();

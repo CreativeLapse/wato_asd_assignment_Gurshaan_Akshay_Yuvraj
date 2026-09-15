@@ -15,7 +15,7 @@
 // until the robot arrives or the goal times out.
 class PlannerNode : public rclcpp::Node {
   public:
-    PlannerNode();
+    explicit PlannerNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
   private:
     enum class State {
@@ -29,10 +29,12 @@ class PlannerNode : public rclcpp::Node {
     void onOdom(const nav_msgs::msg::Odometry::SharedPtr odom);
     void onTimer();
 
-    // Plans to the current goal and publishes the result.
+    // Searches for an optimum; publishes when the old suffix is invalid,
+    // longer, or targets a different resolved goal. Retains equal optima.
     void replan();
     // Drops the current goal and tells the controller to stop.
     void finishGoal(const char* reason);
+    void stopPath();
 
     robot::PlannerCore planner_;
 
@@ -48,6 +50,7 @@ class PlannerNode : public rclcpp::Node {
     std::string path_topic_;
     double goal_tolerance_;
     double plan_timeout_;
+    double odometry_forward_offset_;
     int lethal_cost_;
     int unknown_cost_;
     double cost_weight_;
@@ -55,6 +58,7 @@ class PlannerNode : public rclcpp::Node {
 
     State state_;
     nav_msgs::msg::OccupancyGrid::SharedPtr map_;
+    nav_msgs::msg::Path active_path_;
 
     bool have_odom_;
     double robot_x_;
@@ -67,6 +71,7 @@ class PlannerNode : public rclcpp::Node {
     double planned_goal_x_;
     double planned_goal_y_;
     rclcpp::Time goal_start_time_;
+    rclcpp::Time last_plan_time_;
 };
 
 #endif  // PLANNER_NODE_HPP_

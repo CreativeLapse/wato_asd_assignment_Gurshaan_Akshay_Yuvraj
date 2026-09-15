@@ -28,6 +28,7 @@ void CostmapCore::configure(double resolution, int width, int height, double inf
   grid_.info.origin.position.z = 0.0;
   grid_.info.origin.orientation.w = 1.0;
   grid_.data.assign(static_cast<size_t>(width) * height, kUnknown);
+  obstacle_grid_ = grid_;
 
   inflation_radius_ = inflation_radius;
   buildInflationKernel();
@@ -94,6 +95,9 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
     }
   }
 
+  // Mapping must remember observations, not the temporary inflation band
+  // around just the obstacles visible in this particular scan.
+  obstacle_grid_ = grid_;
   inflate(obstacles);
 }
 

@@ -2,6 +2,7 @@
 #define MAP_MEMORY_CORE_HPP_
 
 #include <cstdint>
+#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
@@ -20,7 +21,8 @@ class MapMemoryCore {
 
     // Allocates the global grid. (origin_x, origin_y) is the world position
     // of the grid's bottom-left corner.
-    void configure(double resolution, int width, int height, double origin_x, double origin_y);
+    void configure(double resolution, int width, int height, double origin_x, double origin_y,
+                   double inflation_radius = 0.0);
 
     // Stamps one local costmap onto the global map. The pose is where the
     // costmap's frame sits in the global frame: the robot's position and its
@@ -41,8 +43,12 @@ class MapMemoryCore {
     // Reads the local costmap at a point given in the local frame.
     // Returns -1 when the point falls outside the costmap or is unknown.
     static int8_t sampleLocal(const nav_msgs::msg::OccupancyGrid& local, double lx, double ly);
+    void inflateGlobalMap();
 
     nav_msgs::msg::OccupancyGrid map_;
+    std::vector<int8_t> observations_;
+    struct KernelCell { int dx; int dy; int8_t cost; };
+    std::vector<KernelCell> inflation_kernel_;
     rclcpp::Logger logger_;
 };
 

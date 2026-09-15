@@ -22,9 +22,11 @@ class CostmapNode : public rclcpp::Node {
 
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_pub_;
+    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr obstacles_pub_;
 
     std::string scan_topic_;
     std::string costmap_topic_;
+    std::string obstacles_topic_;
     double resolution_;
     int width_;
     int height_;

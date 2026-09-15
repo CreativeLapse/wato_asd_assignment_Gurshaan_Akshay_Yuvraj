@@ -56,9 +56,9 @@ struct CompareF
 // A* path planner over a nav_msgs OccupancyGrid.
 //
 // Cells at or above the lethal cost are walls. Everything else can be walked
-// on, but higher costs make a cell more expensive so paths keep their
-// distance from obstacles. Unknown cells are treated as a fixed cost so the
-// robot is willing to drive into space it hasn't seen yet.
+// on. With the default cost_weight of zero, A* minimizes geometric distance
+// on the 8-neighbour grid. An optional nonzero weight adds clearance costs.
+// Unknown cells are traversable; optimality applies to the supplied map.
 class PlannerCore {
   public:
     explicit PlannerCore(const rclcpp::Logger& logger);
@@ -83,6 +83,18 @@ class PlannerCore {
       nav_msgs::msg::Path& path,
       double& planned_goal_x,
       double& planned_goal_y);
+
+    // Validate only the untravelled portion of an existing route.
+    bool remainingPathIsValid(
+      const nav_msgs::msg::OccupancyGrid& map,
+      const nav_msgs::msg::Path& path, double robot_x, double robot_y);
+
+    // Cost from the same resolved start cell used by plan(). Infinity if
+    // the old route does not contain that cell or its suffix is invalid.
+    // This lets callers retain equal optima without ignoring shortcuts.
+    double remainingPathCost(
+      const nav_msgs::msg::OccupancyGrid& map,
+      const nav_msgs::msg::Path& path, double robot_x, double robot_y);
 
   private:
     bool inBounds(const CellIndex& cell) const;

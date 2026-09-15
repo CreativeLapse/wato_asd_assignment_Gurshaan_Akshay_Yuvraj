@@ -4,8 +4,8 @@
 
 #include "control_node.hpp"
 
-ControlNode::ControlNode()
-  : Node("control"),
+ControlNode::ControlNode(const rclcpp::NodeOptions& options)
+  : Node("control", options),
     control_(robot::ControlCore(this->get_logger())),
     control_period_ms_(0),
     lookahead_distance_(0.0),
@@ -14,6 +14,7 @@ ControlNode::ControlNode()
     goal_tolerance_(0.0),
     turn_in_place_angle_(0.0),
     slowdown_distance_(0.0),
+    odometry_forward_offset_(0.0),
     have_odom_(false),
     robot_x_(0.0),
     robot_y_(0.0),
@@ -43,13 +44,14 @@ void ControlNode::loadParameters()
   path_topic_ = this->declare_parameter<std::string>("path_topic", "/path");
   odom_topic_ = this->declare_parameter<std::string>("odom_topic", "/odom/filtered");
   cmd_vel_topic_ = this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
-  control_period_ms_ = this->declare_parameter<int>("control_period_ms", 100);
+  control_period_ms_ = this->declare_parameter<int>("control_period_ms", 50);
   lookahead_distance_ = this->declare_parameter<double>("lookahead_distance", 1.0);
-  linear_speed_ = this->declare_parameter<double>("linear_speed", 0.5);
+  linear_speed_ = this->declare_parameter<double>("linear_speed", 0.8);
   max_angular_speed_ = this->declare_parameter<double>("max_angular_speed", 1.0);
   goal_tolerance_ = this->declare_parameter<double>("goal_tolerance", 0.2);
   turn_in_place_angle_ = this->declare_parameter<double>("turn_in_place_angle", 0.8);
-  slowdown_distance_ = this->declare_parameter<double>("slowdown_distance", 1.0);
+  slowdown_distance_ = this->declare_parameter<double>("slowdown_distance", 1.6);
+  odometry_forward_offset_ = this->declare_parameter<double>("odometry_forward_offset", 1.3);
 }
 
 void ControlNode::onPath(const nav_msgs::msg::Path::SharedPtr path)
@@ -65,9 +67,11 @@ void ControlNode::onPath(const nav_msgs::msg::Path::SharedPtr path)
 
 void ControlNode::onOdom(const nav_msgs::msg::Odometry::SharedPtr odom)
 {
-  robot_x_ = odom->pose.pose.position.x;
-  robot_y_ = odom->pose.pose.position.y;
   robot_yaw_ = yawFromQuaternion(odom->pose.pose.orientation);
+  // Pure pursuit controls the wheel axle, not the sensor that sweeps a
+  // 1.3 m arc around it during an in-place turn.
+  robot_x_ = odom->pose.pose.position.x - odometry_forward_offset_ * std::cos(robot_yaw_);
+  robot_y_ = odom->pose.pose.position.y - odometry_forward_offset_ * std::sin(robot_yaw_);
   have_odom_ = true;
 }
 
@@ -96,6 +100,7 @@ double ControlNode::yawFromQuaternion(const geometry_msgs::msg::Quaternion& q)
   return std::atan2(siny_cosp, cosy_cosp);
 }
 
+#ifndef WATO_NODE_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -103,3 +108,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

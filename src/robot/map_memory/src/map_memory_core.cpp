@@ -15,7 +15,8 @@ constexpr int8_t kUnknown = -1;
 MapMemoryCore::MapMemoryCore(const rclcpp::Logger& logger)
   : logger_(logger) {}
 
-void MapMemoryCore::configure(double resolution, int width, int height, double origin_x, double origin_y)
+void MapMemoryCore::configure(double resolution, int width, int height, double origin_x, double origin_y,
+                              double inflation_radius)
 {
   map_.info.resolution = resolution;
   map_.info.width = width;
@@ -25,6 +26,18 @@ void MapMemoryCore::configure(double resolution, int width, int height, double o
   map_.info.origin.position.z = 0.0;
   map_.info.origin.orientation.w = 1.0;
   map_.data.assign(static_cast<size_t>(width) * height, kUnknown);
+  observations_ = map_.data;
+  inflation_kernel_.clear();
+  const int reach = static_cast<int>(std::ceil(inflation_radius / resolution));
+  for (int dy = -reach; dy <= reach; ++dy) {
+    for (int dx = -reach; dx <= reach; ++dx) {
+      const double distance = std::hypot(dx, dy) * resolution;
+      if (distance < inflation_radius) {
+        const auto cost = static_cast<int8_t>(std::lround(100.0 * (1.0 - distance / inflation_radius)));
+        inflation_kernel_.push_back({dx, dy, cost});
+      }
+    }
+  }
 
   RCLCPP_INFO(logger_, "Global map configured: %dx%d cells at %.2f m, origin (%.1f, %.1f)",
               width, height, resolution, origin_x, origin_y);
@@ -99,14 +112,41 @@ void MapMemoryCore::fuse(
       }
 
       if (best != kUnknown) {
-        map_.data[static_cast<size_t>(gy) * width + gx] = best;
+        observations_[static_cast<size_t>(gy) * width + gx] = best;
         ++updated;
       }
     }
   }
 
+  inflateGlobalMap();
+
   RCLCPP_DEBUG(logger_, "Fused costmap at (%.2f, %.2f, %.2f rad): %d cells updated",
                robot_x, robot_y, robot_yaw, updated);
+}
+
+void MapMemoryCore::inflateGlobalMap()
+{
+  // Rebuild margins from all remembered obstacles. A newly observed free
+  // cell may still lie within the footprint margin of an occluded obstacle.
+  // Conversely, clearing a real obstacle must also clear its old margin.
+  map_.data = observations_;
+  const int width = static_cast<int>(map_.info.width);
+  const int height = static_cast<int>(map_.info.height);
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      if (observations_[static_cast<size_t>(y) * width + x] != 100) {
+        continue;
+      }
+      for (const auto& cell : inflation_kernel_) {
+        const int nx = x + cell.dx;
+        const int ny = y + cell.dy;
+        if (inBounds(nx, ny)) {
+          auto& value = map_.data[static_cast<size_t>(ny) * width + nx];
+          value = std::max(value, cell.cost);
+        }
+      }
+    }
+  }
 }
 
 int8_t MapMemoryCore::sampleLocal(const nav_msgs::msg::OccupancyGrid& local, double lx, double ly)
