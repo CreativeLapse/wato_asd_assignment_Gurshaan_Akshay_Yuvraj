@@ -93,4 +93,14 @@ def generate_launch_description():
     )
     ld.add_action(odometry_spoof_node)
 
+    #################### TF Throttle Node #####################
+    # The simulator's poses arrive on /tf_raw; this republishes them on /tf
+    # at 20 Hz so Foxglove and the TF listeners aren't flooded.
+    tf_throttle_node = Node(
+        package='tf_throttle',
+        name='tf_throttle',
+        executable='tf_throttle_node',
+    )
+    ld.add_action(tf_throttle_node)
+
     return ld

@@ -11,6 +11,7 @@ COPY src/robot/costmap costmap
 COPY src/robot/map_memory map_memory
 COPY src/robot/planner planner
 COPY src/robot/control control
+COPY src/robot/tf_throttle tf_throttle
 COPY src/robot/bringup_robot bringup_robot
 
 # Scan for rosdeps

@@ -35,9 +35,11 @@ def generate_launch_description():
                    '/camera_info@sensor_msgs/msg/CameraInfo@ignition.msgs.CameraInfo'],
         parameters=[{'qos_overrides./model/vehicle_blue.subscriber.reliability': 'reliable'}],
         output='screen',
+        # Gazebo publishes poses at up to 1 kHz. They go to /tf_raw so the
+        # robot's tf_throttle node can republish them on /tf at a sane rate.
         remappings=[
-            ('/model/robot/pose', '/tf'),
-            ('/model/robot/pose_static', '/tf')
+            ('/model/robot/pose', '/tf_raw'),
+            ('/model/robot/pose_static', '/tf_raw')
         ]
     )
 
