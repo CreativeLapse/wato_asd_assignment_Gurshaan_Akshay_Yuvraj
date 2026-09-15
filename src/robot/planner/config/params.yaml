@@ -1,3 +1,14 @@
-# planner_node:
-#   ros__parameters:
-    
+planner_node:
+  ros__parameters:
+    map_topic: "/map"             # OccupancyGrid input from map memory
+    goal_topic: "/goal_point"     # PointStamped input (Foxglove "publish point")
+    odom_topic: "/odom/filtered"  # Odometry input, gives the start pose
+    path_topic: "/path"           # Path output
+
+    goal_tolerance: 0.5           # m, distance at which the goal counts as reached
+    plan_timeout_seconds: 60.0    # s, give up on a goal after this long
+
+    lethal_cost: 50    # cells with cost >= this are treated as walls
+    unknown_cost: 30   # cost assumed for unexplored cells (still drivable)
+    cost_weight: 3.0   # step cost multiplier: distance * (1 + weight * cost/100)
+    snap_radius: 10    # cells, how far to look for open space around a blocked goal
