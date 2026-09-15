@@ -11,8 +11,10 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # Search for dependencies required for building this package
-find_package(ament_cmake REQUIRED) # ROS2 build tool
-find_package(rclcpp REQUIRED)      # ROS2 C++ package
+find_package(ament_cmake REQUIRED)     # ROS2 build tool
+find_package(rclcpp REQUIRED)          # ROS2 C++ package
+find_package(nav_msgs REQUIRED)        # OccupancyGrid, Odometry
+find_package(geometry_msgs REQUIRED)   # Quaternion
 
 # Compiles source files into a library
 # A library is not executed, instead other executables can link
@@ -25,14 +27,21 @@ add_library(map_memory_lib
 target_include_directories(map_memory_lib
   PUBLIC include)
 # Add ROS2 dependencies required by package
-ament_target_dependencies(map_memory_lib 
-  rclcpp
-)
+ament_target_dependencies(map_memory_lib rclcpp nav_msgs)
 
 # Create ROS2 node executable from source files
 add_executable(map_memory_node src/map_memory_node.cpp)
 # Link to the previously built library to access map_memory classes and methods
 target_link_libraries(map_memory_node map_memory_lib)
+ament_target_dependencies(map_memory_node rclcpp nav_msgs geometry_msgs)
+
+# Unit tests for the core library (colcon test)
+option(BUILD_TESTING "Build tests" ON)
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(map_memory_test test/map_memory_test.cpp)
+  target_link_libraries(map_memory_test map_memory_lib)
+endif()
 
 # Copy executable to installation location
 install(TARGETS
@@ -43,6 +52,5 @@ install(TARGETS
 install(DIRECTORY
   config
   DESTINATION share/${PROJECT_NAME})
-
 
 ament_package()

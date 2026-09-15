@@ -1,3 +1,16 @@
-# map_memory_node:
-#   ros__parameters:
-    
+map_memory_node:
+  ros__parameters:
+    local_costmap_topic: "/costmap"   # OccupancyGrid input from the costmap node
+    odom_topic: "/odom/filtered"      # Odometry input, gives the costmap's pose
+    map_topic: "/map"                 # OccupancyGrid output
+    map_frame: "sim_world"            # frame the global map is expressed in
+
+    publish_period_ms: 1000  # ms between map republishes
+    update_distance: 1.5     # m the robot must travel before the next fusion
+
+    global_map:
+      resolution: 0.5   # m per cell (coarser than the local costmap)
+      width: 60         # cells -> 30 m x 30 m, matches the sim arena
+      height: 60
+      origin_x: -15.0   # world position of the bottom-left corner
+      origin_y: -15.0
