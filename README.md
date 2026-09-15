@@ -62,12 +62,6 @@ monorepo: `watod` and `watod-config.sh` drive Docker Compose, `docker/` holds
 the Dockerfiles, `modules/` the compose files, `src/gazebo` the simulator
 world, and `src/samples` the reference pub/sub examples.
 
-## Acknowledgement
-
-The nodes in this repository were written with the help of Claude (Anthropic),
-used as a pair programmer for the implementation and unit tests. All design
-decisions, tuning and verification in simulation are ours.
-
 ## Original setup notes
 
 The assignment is supported on Linux Ubuntu >= 22.04, Windows (WSL), and
