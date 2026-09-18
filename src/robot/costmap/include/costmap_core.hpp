@@ -18,9 +18,9 @@ namespace robot
 // +x points along the laser's zero angle. Every scan rebuilds the grid from
 // scratch, so it only ever describes what the laser can see right now.
 //
-// Two grids come out of each scan. The raw one holds just what the laser
-// saw: -1 unknown, 0 free, 100 a hit. The inflated one adds a lethal disc
-// (99) around every hit and a cost that decays with distance beyond it.
+// Cell values: -1 unknown, 0 free, 100 a laser hit, 99 anywhere the robot's
+// body would overlap an obstacle (the lethal disc), and a decaying cost
+// beyond that so planners keep their distance without being forbidden.
 class CostmapCore {
   public:
     explicit CostmapCore(const rclcpp::Logger& logger);
@@ -39,7 +39,6 @@ class CostmapCore {
     void processScan(const sensor_msgs::msg::LaserScan& scan);
 
     const nav_msgs::msg::OccupancyGrid& grid() const { return grid_; }
-    const nav_msgs::msg::OccupancyGrid& obstacleGrid() const { return obstacle_grid_; }
 
     int8_t cellCost(int cx, int cy) const;
 
@@ -62,7 +61,6 @@ class CostmapCore {
     void inflate(const std::vector<std::pair<int, int>>& obstacles);
 
     nav_msgs::msg::OccupancyGrid grid_;
-    nav_msgs::msg::OccupancyGrid obstacle_grid_;
     std::vector<KernelCell> kernel_;
     double lethal_radius_;
     double inflation_radius_;

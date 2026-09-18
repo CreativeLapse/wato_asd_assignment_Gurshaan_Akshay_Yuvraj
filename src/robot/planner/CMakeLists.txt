@@ -41,10 +41,6 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(planner_test test/planner_test.cpp)
   target_link_libraries(planner_test planner_lib)
-  ament_add_gtest(planner_node_test test/planner_node_test.cpp src/planner_node.cpp
-    ENV ROS_DOMAIN_ID=41)
-  target_compile_definitions(planner_node_test PRIVATE WATO_NODE_NO_MAIN)
-  target_link_libraries(planner_node_test planner_lib)
 endif()
 
 # Copy executable to installation location

@@ -11,13 +11,11 @@
 
 #include "planner_core.hpp"
 
-// Plans a path to the latest goal and keeps checking for a better one as
-// the map fills in and the robot moves, until it arrives or the goal times
-// out. The robot's position is taken at the wheel axle, which is what the
-// controller steers.
+// Plans a path to the latest goal and replans when the map invalidates it,
+// until the robot arrives or the goal times out.
 class PlannerNode : public rclcpp::Node {
   public:
-    explicit PlannerNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+    PlannerNode();
 
   private:
     enum class State {
@@ -31,9 +29,8 @@ class PlannerNode : public rclcpp::Node {
     void onOdom(const nav_msgs::msg::Odometry::SharedPtr odom);
     void onTimer();
 
-    // Plans to the current goal. Publishes only if the robot has no path,
-    // the old one is blocked, or the new one is strictly cheaper. On
-    // failure the robot is stopped but the goal is kept for another try.
+    // Plans to the current goal and publishes the result. On failure the
+    // robot is stopped but the goal is kept so the next map can try again.
     void replan();
     // Drops the current goal and tells the controller to stop.
     void finishGoal(const char* reason);
@@ -53,7 +50,7 @@ class PlannerNode : public rclcpp::Node {
     std::string path_topic_;
     double goal_tolerance_;
     double plan_timeout_;
-    double odometry_forward_offset_;
+    double replan_period_;
     int lethal_cost_;
     int unknown_cost_;
     double cost_weight_;
@@ -63,7 +60,6 @@ class PlannerNode : public rclcpp::Node {
     State state_;
     nav_msgs::msg::OccupancyGrid::SharedPtr map_;
 
-    // Axle position, in the map frame.
     bool have_odom_;
     double robot_x_;
     double robot_y_;
@@ -79,6 +75,7 @@ class PlannerNode : public rclcpp::Node {
     // The path the controller is currently following, if any.
     bool have_path_;
     nav_msgs::msg::Path path_;
+    rclcpp::Time path_time_;
 };
 
 #endif  // PLANNER_NODE_HPP_

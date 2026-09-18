@@ -1,37 +1,34 @@
 #ifndef MAP_MEMORY_NODE_HPP_
 #define MAP_MEMORY_NODE_HPP_
 
-#include <cstdint>
-#include <deque>
+#include <memory>
 #include <string>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/quaternion.hpp"
+#include "std_msgs/msg/header.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 
 #include "map_memory_core.hpp"
 
-// Fuses local observations into a global map whenever the robot has moved,
+// Fuses local costmaps into a global map whenever the robot has moved,
 // turned or waited long enough, and republishes that map on a timer.
-//
-// Scans and odometry arrive on their own schedules, so a scan waits until
-// the odometry sample after it has arrived, then gets placed at the pose
-// interpolated to its own timestamp.
 class MapMemoryNode : public rclcpp::Node {
   public:
-    explicit MapMemoryNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+    MapMemoryNode();
 
   private:
     void loadParameters();
     void onCostmap(const nav_msgs::msg::OccupancyGrid::SharedPtr costmap);
     void onOdom(const nav_msgs::msg::Odometry::SharedPtr odom);
-    void fusePending();
     void publishMap();
 
-    // Interpolates the odometry history to `stamp`. False if the history
-    // doesn't bracket it yet.
-    bool poseAt(int64_t stamp, double& x, double& y, double& yaw) const;
+    // Where the costmap's frame was when the scan was taken. Falls back to
+    // the latest odometry if TF can't answer.
+    void poseAtScan(const std_msgs::msg::Header& header, double& x, double& y, double& yaw) const;
 
     static double yawFromQuaternion(const geometry_msgs::msg::Quaternion& q);
 
@@ -41,6 +38,8 @@ class MapMemoryNode : public rclcpp::Node {
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
     rclcpp::TimerBase::SharedPtr publish_timer_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     std::string costmap_topic_;
     std::string odom_topic_;
@@ -50,24 +49,26 @@ class MapMemoryNode : public rclcpp::Node {
     double update_distance_;
     double update_yaw_;
     double update_period_;
+    double max_fuse_yaw_rate_;
     double resolution_;
     int width_;
     int height_;
     double origin_x_;
     double origin_y_;
-    double lethal_radius_;
-    double inflation_radius_;
-    double decay_;
 
-    std::deque<nav_msgs::msg::Odometry> odom_history_;
-    nav_msgs::msg::OccupancyGrid::SharedPtr pending_;
+    // Latest robot pose and turn rate, in the map frame.
+    bool have_odom_;
+    double robot_x_;
+    double robot_y_;
+    double robot_yaw_;
+    double yaw_rate_;
 
-    // Where and when (sensor time) the last scan was fused.
+    // Where and when the last costmap was fused.
     bool have_fused_;
     double last_fuse_x_;
     double last_fuse_y_;
     double last_fuse_yaw_;
-    int64_t last_fuse_stamp_;
+    rclcpp::Time last_fuse_time_;
 };
 
 #endif  // MAP_MEMORY_NODE_HPP_

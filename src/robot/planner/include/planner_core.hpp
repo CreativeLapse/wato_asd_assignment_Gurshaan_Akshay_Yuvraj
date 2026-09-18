@@ -78,19 +78,9 @@ class PlannerCore {
       double& planned_goal_x,
       double& planned_goal_y);
 
-    // True if the part of the path still ahead of the robot can be driven
-    // on this map. Waypoints already passed are ignored, and lethal cells
-    // within the escape radius of the robot are tolerated.
-    bool remainingPathIsValid(
-      const nav_msgs::msg::OccupancyGrid& map,
-      const nav_msgs::msg::Path& path,
-      double robot_x,
-      double robot_y);
-
-    // What the rest of the path costs from the robot's cell, in the same
-    // units A* minimises, so a fresh plan can be compared against it.
-    // Infinity when the remaining path isn't valid.
-    double remainingPathCost(
+    // True if no waypoint beyond the escape radius of the robot has become
+    // lethal in this map. Cheap enough to run on every map update.
+    bool pathIsClear(
       const nav_msgs::msg::OccupancyGrid& map,
       const nav_msgs::msg::Path& path,
       double robot_x,
@@ -107,11 +97,6 @@ class PlannerCore {
     bool isBlocked(const CellIndex& cell) const;
     bool nearStart(const CellIndex& cell) const;
     bool canEnter(const CellIndex& cell) const;
-    bool canStep(const CellIndex& from, const CellIndex& to) const;
-    double stepCost(const CellIndex& from, const CellIndex& to) const;
-
-    // Index of the waypoint nearest the robot, or the path size if empty.
-    size_t nearestWaypoint(const nav_msgs::msg::Path& path, double robot_x, double robot_y) const;
 
     bool nearestOpenCell(const CellIndex& from, CellIndex& out) const;
     bool aStar(const CellIndex& start, const CellIndex& goal, std::vector<CellIndex>& cells) const;

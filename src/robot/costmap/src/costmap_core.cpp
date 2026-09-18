@@ -34,7 +34,6 @@ void CostmapCore::configure(
   grid_.info.origin.position.z = 0.0;
   grid_.info.origin.orientation.w = 1.0;
   grid_.data.assign(static_cast<size_t>(width) * height, kUnknown);
-  obstacle_grid_ = grid_;
 
   lethal_radius_ = lethal_radius;
   inflation_radius_ = std::max(inflation_radius, lethal_radius);
@@ -112,8 +111,6 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
     }
   }
 
-  // Map memory remembers what was seen, not the band around it.
-  obstacle_grid_ = grid_;
   inflate(obstacles);
 }
 

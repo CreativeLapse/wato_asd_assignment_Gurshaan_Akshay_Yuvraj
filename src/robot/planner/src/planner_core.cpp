@@ -11,7 +11,6 @@ namespace robot
 namespace
 {
 constexpr int kObstacle = 100;
-constexpr double kInfinity = std::numeric_limits<double>::infinity();
 }  // namespace
 
 PlannerCore::PlannerCore(const rclcpp::Logger& logger)
@@ -19,7 +18,7 @@ PlannerCore::PlannerCore(const rclcpp::Logger& logger)
     unknown_cost_(10),
     cost_weight_(5.0),
     snap_radius_(20),
-    escape_radius_(8),
+    escape_radius_(6),
     logger_(logger) {}
 
 void PlannerCore::configure(int lethal_cost, int unknown_cost, double cost_weight, int snap_radius, int escape_radius)
@@ -84,77 +83,33 @@ bool PlannerCore::plan(
   return true;
 }
 
-bool PlannerCore::remainingPathIsValid(
+bool PlannerCore::pathIsClear(
   const nav_msgs::msg::OccupancyGrid& map,
   const nav_msgs::msg::Path& path,
   double robot_x,
   double robot_y)
 {
   map_ = map;
-  if (path.poses.empty() || !worldToCell(robot_x, robot_y, start_)) {
+  if (!worldToCell(robot_x, robot_y, start_)) {
     return false;
   }
 
-  CellIndex previous;
-  bool have_previous = false;
-  for (size_t i = nearestWaypoint(path, robot_x, robot_y); i < path.poses.size(); ++i) {
+  for (const auto& pose : path.poses) {
     CellIndex cell;
-    const auto& p = path.poses[i].pose.position;
-    if (!worldToCell(p.x, p.y, cell) || !canEnter(cell)) {
+    if (!worldToCell(pose.pose.position.x, pose.pose.position.y, cell)) {
       return false;
     }
-    if (have_previous && !canStep(previous, cell)) {
+    if (!canEnter(cell)) {
       return false;
     }
-    previous = cell;
-    have_previous = true;
   }
   return true;
-}
-
-double PlannerCore::remainingPathCost(
-  const nav_msgs::msg::OccupancyGrid& map,
-  const nav_msgs::msg::Path& path,
-  double robot_x,
-  double robot_y)
-{
-  if (!remainingPathIsValid(map, path, robot_x, robot_y)) {
-    return kInfinity;
-  }
-
-  // Charge the hop from the robot's cell onto the path as well, so a path
-  // the robot has drifted away from isn't flattered.
-  double cost = 0.0;
-  CellIndex previous = start_;
-  for (size_t i = nearestWaypoint(path, robot_x, robot_y); i < path.poses.size(); ++i) {
-    CellIndex cell;
-    const auto& p = path.poses[i].pose.position;
-    worldToCell(p.x, p.y, cell);
-    cost += stepCost(previous, cell);
-    previous = cell;
-  }
-  return cost;
-}
-
-size_t PlannerCore::nearestWaypoint(const nav_msgs::msg::Path& path, double robot_x, double robot_y) const
-{
-  size_t nearest = path.poses.size();
-  double best = kInfinity;
-  for (size_t i = 0; i < path.poses.size(); ++i) {
-    const auto& p = path.poses[i].pose.position;
-    const double d = std::hypot(p.x - robot_x, p.y - robot_y);
-    if (d < best) {
-      best = d;
-      nearest = i;
-    }
-  }
-  return nearest;
 }
 
 bool PlannerCore::aStar(const CellIndex& start, const CellIndex& goal, std::vector<CellIndex>& cells) const
 {
   const size_t cell_count = static_cast<size_t>(map_.info.width) * map_.info.height;
-  std::vector<double> g_score(cell_count, kInfinity);
+  std::vector<double> g_score(cell_count, std::numeric_limits<double>::infinity());
   std::vector<int> came_from(cell_count, -1);
   std::vector<char> closed(cell_count, 0);
   std::priority_queue<AStarNode, std::vector<AStarNode>, CompareF> open;
@@ -189,7 +144,7 @@ bool PlannerCore::aStar(const CellIndex& start, const CellIndex& goal, std::vect
           continue;
         }
         const CellIndex next(current.x + dx, current.y + dy);
-        if (!inBounds(next) || !canEnter(next) || !canStep(current, next)) {
+        if (!inBounds(next) || !canEnter(next)) {
           continue;
         }
         const int next_index = toIndex(next);
@@ -197,7 +152,17 @@ bool PlannerCore::aStar(const CellIndex& start, const CellIndex& goal, std::vect
           continue;
         }
 
-        const double tentative_g = g_score[current_index] + stepCost(current, next);
+        // Don't let a diagonal step squeeze between two blocked cells.
+        const bool diagonal = (dx != 0 && dy != 0);
+        if (diagonal &&
+            (!canEnter(CellIndex(current.x + dx, current.y)) ||
+             !canEnter(CellIndex(current.x, current.y + dy)))) {
+          continue;
+        }
+
+        const double distance = diagonal ? std::sqrt(2.0) : 1.0;
+        const double step = distance * (1.0 + cost_weight_ * cellCost(next) / 100.0);
+        const double tentative_g = g_score[current_index] + step;
         if (tentative_g >= g_score[next_index]) {
           continue;
         }
@@ -219,23 +184,6 @@ double PlannerCore::heuristic(const CellIndex& a, const CellIndex& b) const
   return std::hypot(a.x - b.x, a.y - b.y);
 }
 
-double PlannerCore::stepCost(const CellIndex& from, const CellIndex& to) const
-{
-  const double distance = std::hypot(to.x - from.x, to.y - from.y);
-  return distance * (1.0 + cost_weight_ * cellCost(to) / 100.0);
-}
-
-bool PlannerCore::canStep(const CellIndex& from, const CellIndex& to) const
-{
-  // Don't let a diagonal step squeeze between two blocked cells.
-  const int dx = to.x - from.x;
-  const int dy = to.y - from.y;
-  if (dx == 0 || dy == 0) {
-    return true;
-  }
-  return canEnter(CellIndex(from.x + dx, from.y)) && canEnter(CellIndex(from.x, from.y + dy));
-}
-
 bool PlannerCore::nearestOpenCell(const CellIndex& from, CellIndex& out) const
 {
   // Callers may pass the same variable as `from` and `out`, so take a copy
@@ -243,7 +191,7 @@ bool PlannerCore::nearestOpenCell(const CellIndex& from, CellIndex& out) const
   const CellIndex centre = from;
 
   bool found = false;
-  double best = kInfinity;
+  double best = std::numeric_limits<double>::infinity();
   for (int dy = -snap_radius_; dy <= snap_radius_; ++dy) {
     for (int dx = -snap_radius_; dx <= snap_radius_; ++dx) {
       const CellIndex candidate(centre.x + dx, centre.y + dy);

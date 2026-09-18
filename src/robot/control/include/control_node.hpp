@@ -12,11 +12,10 @@
 #include "control_core.hpp"
 
 // Follows the latest path with pure pursuit, publishing velocity commands
-// on a fixed timer. Steers the wheel axle rather than the lidar the
-// odometry reports, and stops if odometry goes quiet.
+// on a fixed timer. Stops if odometry goes quiet.
 class ControlNode : public rclcpp::Node {
   public:
-    explicit ControlNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+    ControlNode();
 
   private:
     void loadParameters();
@@ -38,7 +37,6 @@ class ControlNode : public rclcpp::Node {
     std::string cmd_vel_topic_;
     int control_period_ms_;
     double odom_timeout_;
-    double odometry_forward_offset_;
     robot::ControlParams params_;
 
     bool have_odom_;

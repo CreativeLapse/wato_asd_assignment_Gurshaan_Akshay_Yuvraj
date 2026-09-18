@@ -7,10 +7,10 @@ planner_node:
 
     goal_tolerance: 0.6           # m, distance at which the goal counts as reached
     plan_timeout_seconds: 240.0   # s, give up on a goal after this long
-    odometry_forward_offset: 1.3  # m, the lidar sits this far ahead of the wheel axle
+    replan_period: 5.0            # s, refresh an intact path this often at most
 
     lethal_cost: 99    # cells with cost >= this are treated as walls
     unknown_cost: 10   # cost assumed for unexplored cells (still drivable)
     cost_weight: 5.0   # step cost multiplier: distance * (1 + weight * cost/100)
     snap_radius: 20    # cells, how far to look for open space around a blocked goal
-    escape_radius: 8   # cells, lethal band around the start that may still be crossed
+    escape_radius: 6   # cells, lethal band around the start that may still be crossed

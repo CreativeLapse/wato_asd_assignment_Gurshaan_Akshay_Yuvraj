@@ -10,22 +10,12 @@ namespace robot
 namespace
 {
 constexpr int8_t kUnknown = -1;
-constexpr int8_t kLethal = 99;
-constexpr int8_t kOccupied = 100;
 }  // namespace
 
 MapMemoryCore::MapMemoryCore(const rclcpp::Logger& logger)
   : logger_(logger) {}
 
-void MapMemoryCore::configure(
-  double resolution,
-  int width,
-  int height,
-  double origin_x,
-  double origin_y,
-  double lethal_radius,
-  double inflation_radius,
-  double decay)
+void MapMemoryCore::configure(double resolution, int width, int height, double origin_x, double origin_y)
 {
   map_.info.resolution = resolution;
   map_.info.width = width;
@@ -35,39 +25,9 @@ void MapMemoryCore::configure(
   map_.info.origin.position.z = 0.0;
   map_.info.origin.orientation.w = 1.0;
   map_.data.assign(static_cast<size_t>(width) * height, kUnknown);
-  observations_ = map_.data;
-  buildInflationKernel(lethal_radius, inflation_radius, decay);
 
-  RCLCPP_INFO(logger_, "Global map configured: %dx%d cells at %.2f m, origin (%.1f, %.1f), lethal %.2f m",
-              width, height, resolution, origin_x, origin_y, lethal_radius);
-}
-
-void MapMemoryCore::buildInflationKernel(double lethal_radius, double inflation_radius, double decay)
-{
-  kernel_.clear();
-  const double res = map_.info.resolution;
-  inflation_radius = std::max(inflation_radius, lethal_radius);
-  const int reach = static_cast<int>(std::ceil(inflation_radius / res));
-
-  for (int dy = -reach; dy <= reach; ++dy) {
-    for (int dx = -reach; dx <= reach; ++dx) {
-      if (dx == 0 && dy == 0) {
-        continue;
-      }
-      const double dist = std::hypot(dx, dy) * res;
-      if (dist > inflation_radius) {
-        continue;
-      }
-
-      int cost = kLethal;
-      if (dist > lethal_radius) {
-        cost = static_cast<int>(std::lround((kLethal - 1) * std::exp(-decay * (dist - lethal_radius))));
-      }
-      if (cost > 0) {
-        kernel_.push_back({dx, dy, static_cast<int8_t>(cost)});
-      }
-    }
-  }
+  RCLCPP_INFO(logger_, "Global map configured: %dx%d cells at %.2f m, origin (%.1f, %.1f)",
+              width, height, resolution, origin_x, origin_y);
 }
 
 void MapMemoryCore::fuse(
@@ -112,7 +72,7 @@ void MapMemoryCore::fuse(
   const int gy_begin = std::max(0, static_cast<int>(std::floor((min_y - origin_y) / res)));
   const int gy_end = std::min(height - 1, static_cast<int>(std::floor((max_y - origin_y) / res)));
 
-  // Walking the *global* cells and looking up the local grid for each one
+  // Walking the *global* cells and looking up the local costmap for each one
   // guarantees every global cell under the window is considered exactly once,
   // with no holes from rotation or from the two grids having different sizes.
   // Each global cell is probed at four interior points and takes the highest
@@ -139,41 +99,14 @@ void MapMemoryCore::fuse(
       }
 
       if (best != kUnknown) {
-        observations_[static_cast<size_t>(gy) * width + gx] = best;
+        map_.data[static_cast<size_t>(gy) * width + gx] = best;
         ++updated;
       }
     }
   }
 
-  inflate();
-
-  RCLCPP_DEBUG(logger_, "Fused local grid at (%.2f, %.2f, %.2f rad): %d cells updated",
+  RCLCPP_DEBUG(logger_, "Fused costmap at (%.2f, %.2f, %.2f rad): %d cells updated",
                robot_x, robot_y, robot_yaw, updated);
-}
-
-void MapMemoryCore::inflate()
-{
-  // Rebuild from scratch so a cleared obstacle also loses its margin.
-  map_.data = observations_;
-  const int width = static_cast<int>(map_.info.width);
-  const int height = static_cast<int>(map_.info.height);
-
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      if (observations_[static_cast<size_t>(y) * width + x] != kOccupied) {
-        continue;
-      }
-      for (const KernelCell& k : kernel_) {
-        const int nx = x + k.dx;
-        const int ny = y + k.dy;
-        if (!inBounds(nx, ny)) {
-          continue;
-        }
-        int8_t& cell = map_.data[static_cast<size_t>(ny) * width + nx];
-        cell = std::max(cell, k.cost);
-      }
-    }
-  }
 }
 
 int8_t MapMemoryCore::sampleLocal(const nav_msgs::msg::OccupancyGrid& local, double lx, double ly)

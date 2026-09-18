@@ -22,11 +22,7 @@ void ControlCore::setPath(const nav_msgs::msg::Path& path)
   for (const auto& pose : path.poses) {
     path_.push_back(pose.pose.position);
   }
-  // A replacement path mid-drive shouldn't make the robot brake and ramp
-  // up again; only an empty one does.
-  if (path_.empty()) {
-    reset();
-  }
+  reset();
 }
 
 void ControlCore::clearPath()
@@ -123,12 +119,6 @@ geometry_msgs::msg::Twist ControlCore::computeCommand(
   if (params_.slowdown_distance > 0.0 && to_goal < params_.slowdown_distance) {
     const double approach = params_.max_speed * to_goal / params_.slowdown_distance;
     target_speed = std::min(target_speed, std::max(approach, params_.min_speed));
-  }
-
-  // Never ask for more turn rate than allowed: clamping the angular rate
-  // alone would widen the arc into whatever it was avoiding.
-  if (std::abs(curvature) > 1e-9) {
-    target_speed = std::min(target_speed, params_.max_angular_speed / std::abs(curvature));
   }
 
   if (target_speed > speed_) {
