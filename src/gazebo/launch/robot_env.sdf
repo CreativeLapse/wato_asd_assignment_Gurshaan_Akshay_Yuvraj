@@ -614,7 +614,7 @@
 
            
         <model name='robot' canonical_link='chassis'>
-            <pose relative_to='world'>-6 0 1 0 0 0</pose>   <!--the pose is relative to the world by default-->
+            <pose relative_to='world'>-10 0 1 0 0 0</pose>   <!--the pose is relative to the world by default-->
 
             <frame name="lidar_frame" attached_to='chassis'>
                 <pose>0.8 0 0.5 0 0 0</pose>
