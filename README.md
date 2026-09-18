@@ -7,17 +7,21 @@ Foxglove while avoiding the walls, boxes and cylinders in the arena. The
 software is four ROS 2 Humble nodes that pass data down a pipeline:
 
 ```
-/lidar ──▶ costmap ──▶ /costmap ──▶ map_memory ──▶ /map ──▶ planner ──▶ /path ──▶ control ──▶ /cmd_vel
-                                        ▲                      ▲                     ▲
-                                        └──────── /odom/filtered (odometry_spoof) ───┘
+/lidar ──▶ costmap ──▶ /local_obstacles ──▶ map_memory ──▶ /map ──▶ planner ──▶ /path ──▶ control ──▶ /cmd_vel
+                 └──▶ /costmap (inflated, for viewing)
 ```
+
+Map memory, the planner and the controller also take `/odom/filtered` from
+`odometry_spoof`. Odometry reports the lidar, which sits 1.3 m ahead of the
+wheel axle; the planner and controller convert it to the axle, since that is
+the point that actually follows the path.
 
 | Node | Package | What it does |
 |---|---|---|
-| **costmap** | `src/robot/costmap` | Turns each laser scan into a 40 m × 40 m grid centred on the robot (0.2 m cells). Beams are ray-traced to mark free space and hits become obstacles. Every hit is wrapped in a 1 m lethal disc sized to the robot's body, and cost decays exponentially out to 2.5 m so paths prefer open space without being forbidden near walls. |
-| **map_memory** | `src/robot/map_memory` | Stitches costmaps into a fixed 32 m × 32 m world map (0.25 m cells). It fuses a costmap after 1 m of travel, 0.5 rad of turning or 2 s, whichever comes first, skipping scans taken mid-spin. Each costmap is placed with the robot's TF pose at the scan's timestamp, so obstacles land where they were seen. Newer known values overwrite older ones; unknown never erases. |
-| **planner** | `src/robot/planner` | A* over the world map: 8-connected, Euclidean heuristic, no corner cutting, and a step cost that rises with cell cost so paths hug open space. Unknown cells are drivable. A goal on an obstacle snaps to the nearest open cell. If the robot is parked inside an inflation band it may cross it (never a real wall) to get out. A path is kept until the map blocks it or 5 s pass; a failed plan is retried on the next map, and a goal is dropped only after 4 min. |
-| **control** | `src/robot/control` | Pure pursuit: chases the path point 1.2–2.5 m ahead (growing with speed) along a circular arc. Speed ramps up to 0.8 m/s, drops for tight arcs and near the goal, and the robot spins in place when the target is far off-heading, with hysteresis so it doesn't chatter. Stops on arrival, when the path is cleared, or if odometry goes quiet. |
+| **costmap** | `src/robot/costmap` | Turns each laser scan into a 40 m × 40 m grid centred on the sensor (0.2 m cells). Beams are ray-traced to mark free space and hits become obstacles. The raw grid goes to map memory on `/local_obstacles`; `/costmap` is the same grid with a 1.7 m lethal disc around every hit and a cost that decays out to 3.2 m, for viewing. |
+| **map_memory** | `src/robot/map_memory` | Stitches raw observations into a fixed 32 m × 32 m world map (0.25 m cells). A scan waits for the odometry sample after it, then is placed at the pose interpolated to its own timestamp. It fuses after 1 m of travel, 0.3 rad of turning or 1 s, including while stopped. Newer known values overwrite older ones; unknown never erases. The published map is rebuilt from the remembered hits with the same lethal disc and decay, so an obstacle that has dropped out of view keeps its margin. |
+| **planner** | `src/robot/planner` | A* over the world map: 8-connected, Euclidean heuristic, no corner cutting, and a step cost that rises with cell cost so paths hug open space. Unknown cells are drivable. A goal on an obstacle snaps to the nearest open cell. If the robot is parked inside an inflation band it may cross it (never a real wall) to get out. It searches again on every map change and every 0.5 s as the robot moves, but only publishes when the current path is blocked or the new one is strictly cheaper, so equal routes never flip. A failed plan stops the robot and is retried on the next map; a goal is dropped only after 4 min. |
+| **control** | `src/robot/control` | Pure pursuit at the axle: chases the path point 1.2–2.5 m ahead (growing with speed) along a circular arc. Speed ramps up to 0.8 m/s, drops for tight arcs, never asks for more than the 1 rad/s turn limit so the arc is kept rather than widened, and eases off near the goal. Spins in place when the target is far off-heading, with hysteresis so it doesn't chatter. Stops on arrival, when the path is cleared, or if odometry goes quiet. |
 | tf_throttle | `src/robot/tf_throttle` | Gazebo streams poses at 1 kHz; this republishes the newest transform per frame at 20 Hz on `/tf` so Foxglove stays responsive. |
 | odometry_spoof | `src/robot/odometry_spoof` | Provided by WATonomous: derives `/odom/filtered` from the simulator's TF. |
 
@@ -60,8 +64,11 @@ pose and the planner/control log side by side.
 
 ## Running the unit tests
 
-The core libraries have gtest suites (37 tests across the four packages).
-Inside the robot container:
+The core libraries have gtest suites, and each node has a test that drives
+it over real topics: route stability, retrying a kept goal, axle-based
+steering, and matching scans to odometry. A* is cross-checked against an
+independent Dijkstra on every 3 × 3 obstacle arrangement and 200 seeded maps.
+The robot image build runs all of them. Inside the robot container:
 
 ```bash
 ./watod -t robot            # open a shell in the robot container

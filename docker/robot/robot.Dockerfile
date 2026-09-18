@@ -1,7 +1,12 @@
 ARG BASE_IMAGE=ghcr.io/watonomous/robot_base/base:humble-ubuntu22.04
 
+# Refresh the ROS signing key bundled in the older base image.
+FROM ${BASE_IMAGE} AS ros_base
+RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
+
 ################################ Source ################################
-FROM ${BASE_IMAGE} AS source
+FROM ros_base AS source
 
 # The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
@@ -25,7 +30,7 @@ RUN apt-get -qq update && rosdep update && \
         | sort  > /tmp/colcon_install_list
 
 ################################# Dependencies ################################
-FROM ${BASE_IMAGE} AS dependencies
+FROM ros_base AS dependencies
 
 # The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
@@ -48,11 +53,17 @@ RUN apt-get -qq autoremove -y && apt-get -qq autoclean && apt-get -qq clean && \
 ################################ Build ################################
 FROM dependencies AS build
 
-# Build ROS2 packages
+# Build ROS2 packages. One package at a time with two compilers: the node
+# test targets are heavy and a full parallel build runs a 4 GB Docker VM
+# out of memory.
 WORKDIR ${AMENT_WS}
 RUN . /opt/ros/$ROS_DISTRO/setup.sh && \
-    colcon build \
+    MAKEFLAGS=-j2 colcon build --executor sequential \
         --cmake-args -DCMAKE_BUILD_TYPE=Release --install-base ${WATONOMOUS_INSTALL}
+
+RUN . /opt/ros/$ROS_DISTRO/setup.sh && \
+    colcon test --install-base ${WATONOMOUS_INSTALL} --event-handlers console_direct+ && \
+    colcon test-result --verbose
 
 # Source and Build Artifact Cleanup 
 RUN rm -rf src/* build/* devel/* install/* log/*

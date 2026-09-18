@@ -7,15 +7,15 @@
 namespace
 {
 
-// Global map: 20x20 at 0.5 m, origin (-5, -5).
-robot::MapMemoryCore makeMap()
+// Global map: 20x20 at 0.5 m, origin (-5, -5), no inflation.
+robot::MapMemoryCore makeMap(double lethal = 0.0, double inflation = 0.0, double decay = 1.0)
 {
   robot::MapMemoryCore map(rclcpp::get_logger("map_memory_test"));
-  map.configure(0.5, 20, 20, -5.0, -5.0);
+  map.configure(0.5, 20, 20, -5.0, -5.0, lethal, inflation, decay);
   return map;
 }
 
-// Local costmap: 10x10 at 0.5 m centred on the robot, all unknown.
+// Local grid: 10x10 at 0.5 m centred on the robot, all unknown.
 nav_msgs::msg::OccupancyGrid makeLocal()
 {
   nav_msgs::msg::OccupancyGrid local;
@@ -98,6 +98,46 @@ TEST(MapMemoryTest, NewKnownValueOverwritesOld)
   map.fuse(local, 2.0, 1.0, 0.0);
 
   EXPECT_EQ(map.cellCost(16, 12), 0);
+}
+
+TEST(MapMemoryTest, InflatesRememberedObstacles)
+{
+  auto map = makeMap(0.5, 2.0, 1.0);
+  auto local = makeLocal();
+  setLocal(local, 5, 5, 100);  // right at the robot -> global cell (10, 10)
+  map.fuse(local, 0.0, 0.0, 0.0);
+
+  EXPECT_EQ(map.cellCost(10, 10), 100);
+  EXPECT_EQ(map.cellCost(11, 10), 99);  // 0.5 m: lethal
+  EXPECT_EQ(map.cellCost(12, 10), static_cast<int>(std::lround(98.0 * std::exp(-0.5))));
+  EXPECT_EQ(map.cellCost(14, 10), static_cast<int>(std::lround(98.0 * std::exp(-1.5))));
+  EXPECT_EQ(map.cellCost(15, 10), -1);  // beyond 2.0 m
+}
+
+TEST(MapMemoryTest, OccludedObstacleKeepsItsMarginUntilSeenFree)
+{
+  auto map = makeMap(0.5, 2.0, 1.0);
+  auto local = makeLocal();
+  setLocal(local, 5, 5, 100);
+  map.fuse(local, 0.0, 0.0, 0.0);
+  EXPECT_EQ(map.cellCost(10, 10), 100);
+  EXPECT_EQ(map.cellCost(11, 10), 99);
+
+  // The obstacle is out of view. A beam only confirms its neighbour is
+  // empty; the body still can't fit there, so the margin has to stay.
+  local = makeLocal();
+  setLocal(local, 6, 5, 0);
+  map.fuse(local, 0.0, 0.0, 0.0);
+  EXPECT_EQ(map.cellCost(10, 10), 100);
+  EXPECT_EQ(map.cellCost(11, 10), 99);
+
+  // Once the obstacle itself is seen free, its margin goes with it.
+  local = makeLocal();
+  setLocal(local, 5, 5, 0);
+  map.fuse(local, 0.0, 0.0, 0.0);
+  EXPECT_EQ(map.cellCost(10, 10), 0);
+  EXPECT_EQ(map.cellCost(11, 10), 0);
+  EXPECT_EQ(map.cellCost(12, 10), -1);
 }
 
 TEST(MapMemoryTest, FreeSpaceFillsWithoutHoles)

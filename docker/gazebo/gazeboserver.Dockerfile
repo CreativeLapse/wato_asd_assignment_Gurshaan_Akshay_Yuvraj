@@ -1,7 +1,12 @@
 ARG BASE_IMAGE=ghcr.io/watonomous/robot_base/base:humble-ubuntu22.04
 
+# Refresh the ROS signing key bundled in the older base image.
+FROM ${BASE_IMAGE} AS ros_base
+RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
+
 ################################ Source ################################
-FROM ${BASE_IMAGE} AS source
+FROM ros_base AS source
 
 # The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
@@ -19,7 +24,7 @@ RUN apt-get -qq update && rosdep update && \
         | sort  > /tmp/colcon_install_list
 
 ################################# Dependencies ################################
-FROM ${BASE_IMAGE} AS dependencies
+FROM ros_base AS dependencies
 
 # The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg

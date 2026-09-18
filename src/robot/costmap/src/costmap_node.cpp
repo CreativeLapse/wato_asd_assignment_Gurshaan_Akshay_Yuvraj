@@ -18,6 +18,7 @@ CostmapNode::CostmapNode()
   scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
     scan_topic_, 10, std::bind(&CostmapNode::onScan, this, std::placeholders::_1));
   costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(costmap_topic_, 10);
+  obstacles_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(obstacles_topic_, 10);
 
   RCLCPP_INFO(this->get_logger(), "Costmap node listening on %s, publishing %s",
               scan_topic_.c_str(), costmap_topic_.c_str());
@@ -27,11 +28,12 @@ void CostmapNode::loadParameters()
 {
   scan_topic_ = this->declare_parameter<std::string>("laserscan_topic", "/lidar");
   costmap_topic_ = this->declare_parameter<std::string>("costmap_topic", "/costmap");
+  obstacles_topic_ = this->declare_parameter<std::string>("obstacles_topic", "/local_obstacles");
   resolution_ = this->declare_parameter<double>("costmap.resolution", 0.2);
   width_ = this->declare_parameter<int>("costmap.width", 200);
   height_ = this->declare_parameter<int>("costmap.height", 200);
-  lethal_radius_ = this->declare_parameter<double>("costmap.lethal_radius", 1.0);
-  inflation_radius_ = this->declare_parameter<double>("costmap.inflation_radius", 2.5);
+  lethal_radius_ = this->declare_parameter<double>("costmap.lethal_radius", 1.7);
+  inflation_radius_ = this->declare_parameter<double>("costmap.inflation_radius", 3.2);
   decay_ = this->declare_parameter<double>("costmap.decay", 1.5);
 }
 
@@ -39,8 +41,11 @@ void CostmapNode::onScan(const sensor_msgs::msg::LaserScan::SharedPtr scan)
 {
   costmap_.processScan(*scan);
 
-  // The grid is expressed in the laser's frame, so it borrows the scan header.
-  nav_msgs::msg::OccupancyGrid msg = costmap_.grid();
+  // Both grids are expressed in the laser's frame, so they borrow the scan header.
+  nav_msgs::msg::OccupancyGrid msg = costmap_.obstacleGrid();
+  msg.header = scan->header;
+  obstacles_pub_->publish(msg);
+  msg = costmap_.grid();
   msg.header = scan->header;
   costmap_pub_->publish(msg);
 }

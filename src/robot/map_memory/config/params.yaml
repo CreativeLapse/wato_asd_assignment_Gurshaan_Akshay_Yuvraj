@@ -1,19 +1,23 @@
 map_memory_node:
   ros__parameters:
-    local_costmap_topic: "/costmap"   # OccupancyGrid input from the costmap node
-    odom_topic: "/odom/filtered"      # Odometry input, gives the costmap's pose
-    map_topic: "/map"                 # OccupancyGrid output
-    map_frame: "sim_world"            # frame the global map is expressed in
+    local_costmap_topic: "/local_obstacles" # raw observations from the costmap node
+    odom_topic: "/odom/filtered"            # Odometry input, gives the scan's pose
+    map_topic: "/map"                       # OccupancyGrid output
+    map_frame: "sim_world"                  # frame the global map is expressed in
 
     publish_period_ms: 1000  # ms between map republishes
     update_distance: 1.0     # m of travel that triggers a fusion
-    update_yaw: 0.5          # rad of turning that triggers a fusion
-    update_period: 2.0       # s without a fusion that triggers one anyway
-    max_fuse_yaw_rate: 0.3   # rad/s, scans taken while turning faster are skipped
+    update_yaw: 0.3          # rad of turning that triggers a fusion
+    update_period: 1.0       # s of sensor time without a fusion that triggers one anyway
 
     global_map:
-      resolution: 0.25  # m per cell
-      width: 128        # cells -> 32 m x 32 m, the arena plus its wall inflation
+      resolution: 0.25      # m per cell
+      width: 128            # cells -> 32 m x 32 m, the arena plus its wall inflation
       height: 128
-      origin_x: -16.0   # world position of the bottom-left corner
+      origin_x: -16.0       # world position of the bottom-left corner
       origin_y: -16.0
+      # Measured from the wheel axle, which the planner and controller track.
+      # The body's front corners sweep 1.66 m around it when turning in place.
+      lethal_radius: 1.7    # m, cells this close to a remembered hit are impassable
+      inflation_radius: 3.2 # m, cost decays to nothing at this distance
+      decay: 1.5            # 1/m, how quickly cost falls off past the lethal radius

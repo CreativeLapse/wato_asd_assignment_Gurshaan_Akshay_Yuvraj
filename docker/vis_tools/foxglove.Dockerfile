@@ -1,7 +1,12 @@
 ARG BASE_IMAGE=ghcr.io/watonomous/robot_base/base:humble-ubuntu22.04
 
+# Refresh the ROS signing key bundled in the older base image.
+FROM ${BASE_IMAGE} AS ros_base
+RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
+
 ################################ Source ################################
-FROM ${BASE_IMAGE} AS source
+FROM ros_base AS source
 
 # The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
@@ -19,7 +24,7 @@ RUN apt-get -qq update && rosdep update && \
         | sort  > /tmp/colcon_install_list
 
 ################################# Dependencies ################################
-FROM ${BASE_IMAGE} AS dependencies
+FROM ros_base AS dependencies
 
 # The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
@@ -43,6 +48,11 @@ RUN apt-get update && \
 # Install Rosdep requirements
 COPY --from=source /tmp/colcon_install_list /tmp/colcon_install_list
 RUN apt-fast install -qq -y --no-install-recommends $(cat /tmp/colcon_install_list)
+
+# The current bridge needs matching ROS type-support libraries, including
+# packages already installed in the older base image.
+RUN apt-get update && apt-get install -y --only-upgrade \
+    $(dpkg-query -W -f='${binary:Package} ' 'ros-humble-*')
 
 # Copy in source code from source stage
 WORKDIR ${AMENT_WS}

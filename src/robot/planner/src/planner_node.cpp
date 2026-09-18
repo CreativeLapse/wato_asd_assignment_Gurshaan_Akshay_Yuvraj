@@ -4,12 +4,12 @@
 
 #include "planner_node.hpp"
 
-PlannerNode::PlannerNode()
-  : Node("planner"),
+PlannerNode::PlannerNode(const rclcpp::NodeOptions& options)
+  : Node("planner", options),
     planner_(robot::PlannerCore(this->get_logger())),
     goal_tolerance_(0.0),
     plan_timeout_(0.0),
-    replan_period_(0.0),
+    odometry_forward_offset_(0.0),
     lethal_cost_(0),
     unknown_cost_(0),
     cost_weight_(0.0),
@@ -24,8 +24,7 @@ PlannerNode::PlannerNode()
     planned_goal_x_(0.0),
     planned_goal_y_(0.0),
     goal_start_time_(0, 0, RCL_ROS_TIME),
-    have_path_(false),
-    path_time_(0, 0, RCL_ROS_TIME)
+    have_path_(false)
 {
   loadParameters();
   planner_.configure(lethal_cost_, unknown_cost_, cost_weight_, snap_radius_, escape_radius_);
@@ -52,26 +51,19 @@ void PlannerNode::loadParameters()
   path_topic_ = this->declare_parameter<std::string>("path_topic", "/path");
   goal_tolerance_ = this->declare_parameter<double>("goal_tolerance", 0.6);
   plan_timeout_ = this->declare_parameter<double>("plan_timeout_seconds", 240.0);
-  replan_period_ = this->declare_parameter<double>("replan_period", 5.0);
+  odometry_forward_offset_ = this->declare_parameter<double>("odometry_forward_offset", 1.3);
   lethal_cost_ = this->declare_parameter<int>("lethal_cost", 99);
   unknown_cost_ = this->declare_parameter<int>("unknown_cost", 10);
   cost_weight_ = this->declare_parameter<double>("cost_weight", 5.0);
   snap_radius_ = this->declare_parameter<int>("snap_radius", 20);
-  escape_radius_ = this->declare_parameter<int>("escape_radius", 6);
+  escape_radius_ = this->declare_parameter<int>("escape_radius", 8);
 }
 
 void PlannerNode::onMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map)
 {
+  const bool changed = !map_ || map_->info != map->info || map_->data != map->data;
   map_ = map;
-  if (state_ != State::WAITING_FOR_ROBOT_TO_REACH_GOAL) {
-    return;
-  }
-
-  // Keep the current path unless the map has broken it or it has gone
-  // stale; replanning on every map makes the robot twitch between
-  // near-equal routes.
-  const bool stale = (this->now() - path_time_).seconds() > replan_period_;
-  if (!have_path_ || stale || !planner_.pathIsClear(*map_, path_, robot_x_, robot_y_)) {
+  if (state_ == State::WAITING_FOR_ROBOT_TO_REACH_GOAL && (changed || !have_path_)) {
     replan();
   }
 }
@@ -92,8 +84,11 @@ void PlannerNode::onGoal(const geometry_msgs::msg::PointStamped::SharedPtr goal)
 
 void PlannerNode::onOdom(const nav_msgs::msg::Odometry::SharedPtr odom)
 {
-  robot_x_ = odom->pose.pose.position.x;
-  robot_y_ = odom->pose.pose.position.y;
+  // Odometry reports the lidar, which sits ahead of the wheel axle.
+  const auto& q = odom->pose.pose.orientation;
+  const double yaw = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+  robot_x_ = odom->pose.pose.position.x - odometry_forward_offset_ * std::cos(yaw);
+  robot_y_ = odom->pose.pose.position.y - odometry_forward_offset_ * std::sin(yaw);
   have_odom_ = true;
 }
 
@@ -112,7 +107,12 @@ void PlannerNode::onTimer()
   const double elapsed = (this->now() - goal_start_time_).seconds();
   if (elapsed > plan_timeout_) {
     finishGoal("Goal timed out");
+    return;
   }
+
+  // The robot has moved since the last look, so a shorter route may have
+  // opened up even if the map hasn't changed. A failed plan gets retried.
+  replan();
 }
 
 void PlannerNode::replan()
@@ -129,11 +129,12 @@ void PlannerNode::replan()
   }
 
   nav_msgs::msg::Path path;
-  const bool ok = planner_.plan(
-    *map_, robot_x_, robot_y_, goal_x_, goal_y_, path, planned_goal_x_, planned_goal_y_);
+  double goal_x = 0.0;
+  double goal_y = 0.0;
+  const bool ok = planner_.plan(*map_, robot_x_, robot_y_, goal_x_, goal_y_, path, goal_x, goal_y);
   if (!ok) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                         "Planning failed; will retry on the next map.");
+                         "Planning failed; stopping and keeping the goal for another try.");
     if (have_path_) {
       have_path_ = false;
       publishEmptyPath();
@@ -141,9 +142,20 @@ void PlannerNode::replan()
     return;
   }
 
+  // Keep the current path when it's still as good: swapping between equal
+  // routes only makes the robot twitch.
+  if (have_path_ && goal_x == planned_goal_x_ && goal_y == planned_goal_y_) {
+    const double old_cost = planner_.remainingPathCost(*map_, path_, robot_x_, robot_y_);
+    const double new_cost = planner_.remainingPathCost(*map_, path, robot_x_, robot_y_);
+    if (old_cost <= new_cost + 1e-9) {
+      return;
+    }
+  }
+
   path.header.stamp = this->now();
   path_ = path;
-  path_time_ = path.header.stamp;
+  planned_goal_x_ = goal_x;
+  planned_goal_y_ = goal_y;
   have_path_ = true;
   path_pub_->publish(path);
   RCLCPP_INFO(this->get_logger(), "Published path with %zu waypoints", path.poses.size());
@@ -168,6 +180,7 @@ void PlannerNode::publishEmptyPath()
   path_pub_->publish(empty);
 }
 
+#ifndef WATO_NODE_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -175,3 +188,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

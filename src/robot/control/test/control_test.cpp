@@ -187,7 +187,7 @@ TEST(ControlTest, SlowsDownApproachingGoal)
   EXPECT_GE(near.linear.x, 0.15);  // never below min_speed
 }
 
-TEST(ControlTest, NewPathRestartsTheRamp)
+TEST(ControlTest, ReplacementPathKeepsSpeed)
 {
   auto control = makeController();
   control.setPath(makePath(1.0, 0.0));
@@ -195,7 +195,33 @@ TEST(ControlTest, NewPathRestartsTheRamp)
 
   control.setPath(makePath(1.0, 0.0));
   const auto cmd = control.computeCommand(0.0, 0.0, 0.0, kDt);
-  EXPECT_NEAR(cmd.linear.x, 0.05, 1e-9);
+  EXPECT_NEAR(cmd.linear.x, 0.8, 1e-9);
+}
+
+TEST(ControlTest, PreservesArcWhenTurnRateLimitBinds)
+{
+  for (const double direction : {-1.0, 1.0}) {
+    auto control = makeController();
+    robot::ControlParams params;
+    params.max_angular_speed = 0.1;
+    params.lookahead_min = 1.0;
+    params.lookahead_max = 2.0;
+    control.configure(params);
+
+    auto path = makePath(1.0, 0.0);
+    for (auto& pose : path.poses) {
+      pose.pose.position.y += direction * 0.7;
+    }
+    control.setPath(path);
+
+    // The lookahead is (1.0, +/-0.7): at cruising speed the arc would need
+    // far more than 0.1 rad/s, so the speed has to drop to keep it.
+    const auto cmd = settle(control, 0.0, 0.0, 0.0);
+    const double curvature = direction * 1.4 / (1.0 + 0.49);
+    EXPECT_GT(cmd.linear.x, 0.0);
+    EXPECT_NEAR(cmd.angular.z, direction * 0.1, 1e-9);
+    EXPECT_NEAR(cmd.angular.z / cmd.linear.x, curvature, 1e-9);
+  }
 }
 
 TEST(ControlTest, ClearingPathStopsRobot)

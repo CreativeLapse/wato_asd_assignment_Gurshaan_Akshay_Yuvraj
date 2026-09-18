@@ -1,12 +1,15 @@
 costmap_node:
   ros__parameters:
-    laserscan_topic: "/lidar"   # LaserScan input
-    costmap_topic: "/costmap"   # OccupancyGrid output, in the laser frame
+    laserscan_topic: "/lidar"           # LaserScan input
+    obstacles_topic: "/local_obstacles" # raw hits and free space, what map memory remembers
+    costmap_topic: "/costmap"           # the same grid with inflation, for viewing
 
     costmap:
       resolution: 0.2       # m per cell
       width: 200            # cells -> 40 m across, covers the 20 m lidar range
       height: 200
-      lethal_radius: 1.0    # m, cells this close to a hit are impassable (robot half-width 0.7 + margin)
-      inflation_radius: 2.5 # m, cost decays to nothing at this distance
+      # The inflation here mirrors what map memory builds globally. It is
+      # measured from the wheel axle; the body's front corners sweep 1.66 m.
+      lethal_radius: 1.7    # m, cells this close to a hit are impassable
+      inflation_radius: 3.2 # m, cost decays to nothing at this distance
       decay: 1.5            # 1/m, how quickly cost falls off past the lethal radius

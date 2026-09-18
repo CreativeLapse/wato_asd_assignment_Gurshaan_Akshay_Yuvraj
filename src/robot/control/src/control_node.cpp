@@ -4,11 +4,12 @@
 
 #include "control_node.hpp"
 
-ControlNode::ControlNode()
-  : Node("control"),
+ControlNode::ControlNode(const rclcpp::NodeOptions& options)
+  : Node("control", options),
     control_(robot::ControlCore(this->get_logger())),
     control_period_ms_(0),
     odom_timeout_(0.0),
+    odometry_forward_offset_(0.0),
     have_odom_(false),
     robot_x_(0.0),
     robot_y_(0.0),
@@ -39,6 +40,7 @@ void ControlNode::loadParameters()
   cmd_vel_topic_ = this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
   control_period_ms_ = this->declare_parameter<int>("control_period_ms", 100);
   odom_timeout_ = this->declare_parameter<double>("odom_timeout", 0.5);
+  odometry_forward_offset_ = this->declare_parameter<double>("odometry_forward_offset", 1.3);
 
   robot::ControlParams defaults;
   params_.max_speed = this->declare_parameter<double>("max_speed", defaults.max_speed);
@@ -70,9 +72,12 @@ void ControlNode::onPath(const nav_msgs::msg::Path::SharedPtr path)
 
 void ControlNode::onOdom(const nav_msgs::msg::Odometry::SharedPtr odom)
 {
-  robot_x_ = odom->pose.pose.position.x;
-  robot_y_ = odom->pose.pose.position.y;
+  // Odometry reports the lidar, which sits ahead of the wheel axle. The
+  // axle is what actually follows the arc, and it doesn't sweep sideways
+  // when the robot turns in place.
   robot_yaw_ = yawFromQuaternion(odom->pose.pose.orientation);
+  robot_x_ = odom->pose.pose.position.x - odometry_forward_offset_ * std::cos(robot_yaw_);
+  robot_y_ = odom->pose.pose.position.y - odometry_forward_offset_ * std::sin(robot_yaw_);
   last_odom_time_ = this->now();
   have_odom_ = true;
 }
@@ -108,6 +113,7 @@ double ControlNode::yawFromQuaternion(const geometry_msgs::msg::Quaternion& q)
   return std::atan2(siny_cosp, cosy_cosp);
 }
 
+#ifndef WATO_NODE_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -115,3 +121,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

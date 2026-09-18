@@ -9,7 +9,8 @@
 
 #include "costmap_core.hpp"
 
-// Subscribes to the laser scan and publishes a local costmap for every scan.
+// Subscribes to the laser scan and publishes, for every scan, the raw
+// observations for map memory and an inflated costmap for viewing.
 class CostmapNode : public rclcpp::Node {
   public:
     CostmapNode();
@@ -22,9 +23,11 @@ class CostmapNode : public rclcpp::Node {
 
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_pub_;
+    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr obstacles_pub_;
 
     std::string scan_topic_;
     std::string costmap_topic_;
+    std::string obstacles_topic_;
     double resolution_;
     int width_;
     int height_;
