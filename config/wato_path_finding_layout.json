@@ -5,22 +5,9 @@
         "distance": 45,
         "perspective": true,
         "phi": 35,
-        "target": [
-          0,
-          0,
-          0
-        ],
-        "targetOffset": [
-          0,
-          0,
-          0
-        ],
-        "targetOrientation": [
-          0,
-          0,
-          0,
-          1
-        ],
+        "target": [0, 0, 0],
+        "targetOffset": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
         "thetaOffset": 0,
         "fovy": 45,
         "near": 0.5,
@@ -31,118 +18,48 @@
       "scene": {
         "enableStats": false,
         "backgroundColor": "#1a1a1e",
-        "transforms": {
-          "showLabel": false,
-          "axisScale": 0.5,
-          "lineWidth": 1
-        }
+        "transforms": { "showLabel": false, "axisScale": 0.5, "lineWidth": 1 }
       },
       "transforms": {
-        "frame:sim_world": {
-          "visible": false
-        },
-        "frame:robot": {
-          "visible": false
-        },
-        "frame:robot/chassis": {
-          "visible": false
-        },
-        "frame:robot/chassis/camera": {
-          "visible": false
-        },
-        "frame:robot/chassis/imu_sensor": {
-          "visible": false
-        },
-        "frame:robot/chassis/gpu_lidar": {
-          "visible": false
-        },
-        "frame:robot/right_wheel": {
-          "visible": false
-        },
-        "frame:robot/left_wheel": {
-          "visible": false
-        },
-        "frame:robot/caster": {
-          "visible": false
-        },
-        "frame:box1": {
-          "visible": false
-        },
-        "frame:box2": {
-          "visible": false
-        },
-        "frame:box3": {
-          "visible": false
-        },
-        "frame:box4": {
-          "visible": false
-        },
-        "frame:box5": {
-          "visible": false
-        },
-        "frame:cyl1": {
-          "visible": false
-        },
-        "frame:cyl2": {
-          "visible": false
-        }
+        "frame:sim_world": { "visible": true },
+        "frame:robot": { "visible": true },
+        "frame:robot/chassis": { "visible": false },
+        "frame:robot/chassis/camera": { "visible": false },
+        "frame:robot/chassis/imu_sensor": { "visible": false },
+        "frame:robot/chassis/gpu_lidar": { "visible": false },
+        "frame:robot/right_wheel": { "visible": false },
+        "frame:robot/left_wheel": { "visible": false },
+        "frame:robot/caster": { "visible": false },
+        "frame:box1": { "visible": false },
+        "frame:box2": { "visible": false },
+        "frame:box3": { "visible": false },
+        "frame:box4": { "visible": false },
+        "frame:box5": { "visible": false },
+        "frame:cyl1": { "visible": false },
+        "frame:cyl2": { "visible": false }
       },
       "topics": {
-        "/map": {
-          "visible": true,
-          "colorMode": "costmap",
-          "alpha": 0.75,
-          "frameLocked": false
-        },
-        "/costmap": {
-          "visible": false,
-          "colorMode": "costmap",
-          "alpha": 0.6
-        },
+        "/map": { "visible": true, "colorMode": "costmap", "alpha": 0.75, "frameLocked": false },
+        "/costmap": { "visible": false, "colorMode": "costmap", "alpha": 0.6 },
         "/path": {
           "visible": true,
           "type": "line",
           "lineWidth": 0.35,
-          "gradient": [
-            "#00ff88ff",
-            "#ffe600ff"
-          ],
+          "gradient": ["#00ff88ff", "#ffe600ff"],
           "axisScale": 0.2
         },
-        "/goal_point": {
-          "visible": true,
-          "color": "#ff3b3bff",
-          "pointSize": 30,
-          "pointShape": "circle"
-        },
-        "/odom/filtered": {
-          "visible": true,
-          "type": "arrow",
-          "arrowScale": [
-            1.2,
-            0.3,
-            0.3
-          ],
-          "color": "#4da3ffff",
-          "historySize": 1
-        },
+        "/goal_point": { "visible": true, "color": "#ff3b3bff", "pointSize": 30, "pointShape": "circle" },
+        "/odom/filtered": { "visible": true, "type": "arrow", "arrowScale": [1.2, 0.3, 0.3], "color": "#4da3ffff", "historySize": 1 },
         "/lidar": {
           "visible": true,
           "colorField": "range",
           "colorMode": "gradient",
-          "gradient": [
-            "#ff5c5cff",
-            "#5cff7bff"
-          ],
+          "gradient": ["#ff5c5cff", "#5cff7bff"],
           "pointSize": 6,
           "pointShape": "circle"
         },
-        "/camera": {
-          "visible": false
-        },
-        "/tf": {
-          "visible": true
-        }
+        "/camera": { "visible": false },
+        "/tf": { "visible": true }
       },
       "layers": {
         "layer-robot-urdf": {
@@ -178,7 +95,7 @@
           "order": 2
         },
         "layer-grid": {
-          "visible": false,
+          "visible": true,
           "frameLocked": true,
           "label": "Grid",
           "instanceId": "layer-grid",
@@ -186,16 +103,8 @@
           "frameId": "sim_world",
           "divisions": 30,
           "color": "#3b6ea8",
-          "position": [
-            0,
-            0,
-            0
-          ],
-          "rotation": [
-            0,
-            0,
-            0
-          ],
+          "position": [0, 0, 0],
+          "rotation": [0, 0, 0],
           "size": 30,
           "lineWidth": 1,
           "order": 3
@@ -216,24 +125,12 @@
       "searchTerms": [],
       "minLogLevel": 1,
       "nameFilter": {
-        "planner_node": {
-          "visible": true
-        },
-        "control_node": {
-          "visible": true
-        },
-        "map_memory_node": {
-          "visible": true
-        },
-        "costmap_node": {
-          "visible": false
-        },
-        "foxglove_bridge": {
-          "visible": false
-        },
-        "tf_throttle": {
-          "visible": false
-        }
+        "planner_node": { "visible": true },
+        "control_node": { "visible": true },
+        "map_memory_node": { "visible": true },
+        "costmap_node": { "visible": false },
+        "foxglove_bridge": { "visible": false },
+        "tf_throttle": { "visible": false }
       },
       "topicToRender": "/rosout"
     },
@@ -247,18 +144,8 @@
     },
     "Plot!cmdvel": {
       "paths": [
-        {
-          "value": "/cmd_vel.linear.x",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "linear.x (m/s)"
-        },
-        {
-          "value": "/cmd_vel.angular.z",
-          "enabled": true,
-          "timestampMethod": "receiveTime",
-          "label": "angular.z (rad/s)"
-        }
+        { "value": "/cmd_vel.linear.x", "enabled": true, "timestampMethod": "receiveTime", "label": "linear.x (m/s)" },
+        { "value": "/cmd_vel.angular.z", "enabled": true, "timestampMethod": "receiveTime", "label": "angular.z (rad/s)" }
       ],
       "showXAxisLabels": true,
       "showYAxisLabels": true,
@@ -272,29 +159,9 @@
     },
     "Image!camera": {
       "cameraState": {
-        "distance": 20,
-        "perspective": true,
-        "phi": 60,
-        "target": [
-          0,
-          0,
-          0
-        ],
-        "targetOffset": [
-          0,
-          0,
-          0
-        ],
-        "targetOrientation": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "thetaOffset": 45,
-        "fovy": 45,
-        "near": 0.5,
-        "far": 5000
+        "distance": 20, "perspective": true, "phi": 60, "target": [0, 0, 0],
+        "targetOffset": [0, 0, 0], "targetOrientation": [0, 0, 0, 1],
+        "thetaOffset": 45, "fovy": 45, "near": 0.5, "far": 5000
       },
       "followMode": "follow-pose",
       "scene": {},
@@ -310,16 +177,12 @@
         "poseEstimateYDeviation": 0.5,
         "poseEstimateThetaDeviation": 0.26179939
       },
-      "imageMode": {
-        "imageTopic": "/camera"
-      }
+      "imageMode": { "imageTopic": "/camera" }
     }
   },
   "globalVariables": {},
   "userNodes": {},
-  "playbackConfig": {
-    "speed": 1
-  },
+  "playbackConfig": { "speed": 1 },
   "layout": {
     "direction": "row",
     "first": "3D!pathfinding",
@@ -329,12 +192,7 @@
       "second": {
         "direction": "column",
         "first": "Plot!cmdvel",
-        "second": {
-          "direction": "row",
-          "first": "RawMessages!goal",
-          "second": "Image!camera",
-          "splitPercentage": 45
-        },
+        "second": { "direction": "row", "first": "RawMessages!goal", "second": "Image!camera", "splitPercentage": 45 },
         "splitPercentage": 50
       },
       "splitPercentage": 35
