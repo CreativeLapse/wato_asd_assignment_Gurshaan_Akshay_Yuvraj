@@ -13,11 +13,11 @@ namespace robot
 
 struct ControlParams
 {
-  double max_speed = 0.8;          // m/s
+  double max_speed = 1.6;          // m/s
   double min_speed = 0.15;         // m/s, floor while creeping up to the goal
   double max_angular_speed = 1.0;  // rad/s
-  double accel = 0.5;              // m/s^2, how fast the speed may rise
-  double decel = 1.0;              // m/s^2, how fast it may fall
+  double accel = 1.0;              // m/s^2, how fast the speed may rise
+  double decel = 1.5;              // m/s^2, how fast it may fall
   double lookahead_min = 1.2;      // m
   double lookahead_max = 2.5;      // m
   double lookahead_gain = 2.0;     // s, lookahead = gain * speed, clamped

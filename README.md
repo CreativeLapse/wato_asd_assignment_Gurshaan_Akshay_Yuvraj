@@ -39,7 +39,7 @@ arrives, and a goal is only dropped after 4 min.
 
 Control (`src/robot/control`) is pure pursuit. It chases the path point 1.2
 to 2.5 m ahead, further at higher speed, along a circular arc. Speed ramps up
-to 0.8 m/s, drops for tight arcs and near the goal, and the robot spins in
+to 1.6 m/s, drops for tight arcs and near the goal, and the robot spins in
 place when the target is far off its heading, with some hysteresis so it
 doesn't flip between spinning and driving. It stops on arrival, when the path
 is cleared, or if odometry goes quiet.

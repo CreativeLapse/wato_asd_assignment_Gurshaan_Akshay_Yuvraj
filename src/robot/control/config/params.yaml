@@ -7,11 +7,11 @@ control_node:
     control_period_ms: 100     # ms, 10 Hz control loop
     odom_timeout: 0.5          # s without odometry before the robot is held still
 
-    max_speed: 0.8             # m/s, cruising speed on a straight
+    max_speed: 1.6             # m/s, cruising speed on a straight
     min_speed: 0.15            # m/s, floor while creeping up to the goal
     max_angular_speed: 1.0     # rad/s, turning rate limit
-    accel: 0.5                 # m/s^2, speed ramp up
-    decel: 1.0                 # m/s^2, speed ramp down
+    accel: 1.0                 # m/s^2, speed ramp up
+    decel: 1.5                 # m/s^2, speed ramp down
     lookahead_min: 1.2         # m, aim at least this far ahead on the path
     lookahead_max: 2.5         # m, and at most this far
     lookahead_gain: 2.0        # s, lookahead = gain * speed between those limits
