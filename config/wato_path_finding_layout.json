@@ -39,7 +39,7 @@
         "frame:cyl2": { "visible": false }
       },
       "topics": {
-        "/map": { "visible": true, "colorMode": "custom", "minColor": "#15151aff", "maxColor": "#ff3b3bff", "unknownColor": "#00000000", "invalidColor": "#00000000", "alpha": 0.75, "frameLocked": false },
+        "/map": { "visible": true, "colorMode": "costmap", "alpha": 0.75, "frameLocked": false },
         "/costmap": { "visible": false, "colorMode": "costmap", "alpha": 0.6 },
         "/path": {
           "visible": true,
