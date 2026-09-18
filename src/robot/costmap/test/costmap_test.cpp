@@ -131,6 +131,19 @@ TEST(CostmapTest, InfiniteBeamClearsWithoutObstacle)
   }
 }
 
+TEST(CostmapTest, BeamThatHitsNothingClearsItsLastCell)
+{
+  auto costmap = makeCostmap();
+  auto scan = singleBeam(0.0, std::numeric_limits<double>::infinity());
+  scan.range_max = 3.0;
+  costmap.processScan(scan);
+
+  // The ray ends at (3, 0) -> cell (16, 10) with nothing there, so that
+  // cell is free rather than left unknown.
+  EXPECT_EQ(costmap.cellCost(16, 10), 0);
+  EXPECT_EQ(costmap.cellCost(17, 10), -1);
+}
+
 TEST(CostmapTest, EachScanStartsFresh)
 {
   auto costmap = makeCostmap();

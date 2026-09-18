@@ -104,7 +104,7 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
     int end_cx = 0;
     int end_cy = 0;
     worldToCell(ranges[i] * std::cos(angle), ranges[i] * std::sin(angle), end_cx, end_cy);
-    traceFree(robot_cx, robot_cy, end_cx, end_cy);
+    traceFree(robot_cx, robot_cy, end_cx, end_cy, !hit);
 
     if (hit && inBounds(end_cx, end_cy)) {
       int8_t& cell = at(end_cx, end_cy);
@@ -135,6 +135,7 @@ void CostmapCore::fillBetweenBeams(
       continue;
     }
     const double range = std::min(ranges[i], ranges[i + 1]);
+    const bool open = range >= scan.range_max;
     const int extra = static_cast<int>(std::ceil(scan.angle_increment * range / res)) - 1;
     for (int k = 1; k <= extra; ++k) {
       const double angle = scan.angle_min +
@@ -142,15 +143,21 @@ void CostmapCore::fillBetweenBeams(
       int end_cx = 0;
       int end_cy = 0;
       worldToCell(range * std::cos(angle), range * std::sin(angle), end_cx, end_cy);
-      traceFree(robot_cx, robot_cy, end_cx, end_cy);
+      traceFree(robot_cx, robot_cy, end_cx, end_cy, open);
     }
   }
 }
 
-void CostmapCore::traceFree(int x0, int y0, int x1, int y1)
+void CostmapCore::traceFree(int x0, int y0, int x1, int y1, bool include_end)
 {
   // Bresenham's line walk. The ray starts at the robot, which is inside the
   // grid, so the first out-of-bounds cell means it has left for good.
+  if (include_end && inBounds(x1, y1)) {
+    int8_t& end = at(x1, y1);
+    if (end == kUnknown) {
+      end = kFree;
+    }
+  }
   const int dx = std::abs(x1 - x0);
   const int dy = -std::abs(y1 - y0);
   const int sx = (x0 < x1) ? 1 : -1;

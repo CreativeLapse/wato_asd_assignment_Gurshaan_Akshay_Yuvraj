@@ -88,7 +88,7 @@ pose and the planner and control logs side by side.
 
 ## Running the unit tests
 
-The core libraries have gtest suites, 38 tests across the four packages, and
+The core libraries have gtest suites, 39 tests across the four packages, and
 the robot image build runs them. To run them yourself inside the robot
 container:
 

@@ -54,8 +54,9 @@ class CostmapCore {
     int8_t& at(int cx, int cy);
 
     // Marks unknown cells along the segment (x0,y0)->(x1,y1) as free. The end
-    // cell itself is left untouched so an obstacle can still be placed there.
-    void traceFree(int x0, int y0, int x1, int y1);
+    // cell is normally left untouched so an obstacle can be placed there;
+    // a beam that hit nothing has no obstacle, so it clears the end too.
+    void traceFree(int x0, int y0, int x1, int y1, bool include_end);
 
     // Traces extra rays between neighbouring beams wherever they have
     // spread more than a cell apart, so distant free space has no gaps.
