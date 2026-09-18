@@ -12,25 +12,52 @@ software is four ROS 2 Humble nodes that pass data down a pipeline:
                                         └──────── /odom/filtered (odometry_spoof) ───┘
 ```
 
-| Node | Package | What it does |
-|---|---|---|
-| **costmap** | `src/robot/costmap` | Turns each laser scan into a 40 m × 40 m grid centred on the robot (0.2 m cells). Beams are ray-traced to mark free space and hits become obstacles. Every hit is wrapped in a 1 m lethal disc sized to the robot's body, and cost decays exponentially out to 2.5 m so paths prefer open space without being forbidden near walls. |
-| **map_memory** | `src/robot/map_memory` | Stitches costmaps into a fixed 32 m × 32 m world map (0.25 m cells). It fuses a costmap after 1 m of travel, 0.5 rad of turning or 2 s, whichever comes first, skipping scans taken mid-spin. Each costmap is placed with the robot's TF pose at the scan's timestamp, so obstacles land where they were seen. Newer known values overwrite older ones; unknown never erases. |
-| **planner** | `src/robot/planner` | A* over the world map: 8-connected, Euclidean heuristic, no corner cutting, and a step cost that rises with cell cost so paths hug open space. Unknown cells are drivable. A goal on an obstacle snaps to the nearest open cell. If the robot is parked inside an inflation band it may cross it (never a real wall) to get out. A path is kept until the map blocks it or 5 s pass; a failed plan is retried on the next map, and a goal is dropped only after 4 min. |
-| **control** | `src/robot/control` | Pure pursuit: chases the path point 1.2–2.5 m ahead (growing with speed) along a circular arc. Speed ramps up to 0.8 m/s, drops for tight arcs and near the goal, and the robot spins in place when the target is far off-heading, with hysteresis so it doesn't chatter. Stops on arrival, when the path is cleared, or if odometry goes quiet. |
-| tf_throttle | `src/robot/tf_throttle` | Gazebo streams poses at 1 kHz; this republishes the newest transform per frame at 20 Hz on `/tf` so Foxglove stays responsive. |
-| odometry_spoof | `src/robot/odometry_spoof` | Provided by WATonomous: derives `/odom/filtered` from the simulator's TF. |
+## How it works
 
-Each of the four main packages splits into a `*_core` library (pure algorithm,
-no ROS calls beyond logging) and a `*_node` executable (subscriptions,
-publishers, timers, parameters). Every tunable lives in the package's
-`config/params.yaml`.
+The costmap node (`src/robot/costmap`) turns each laser scan into a 40 m
+square grid of 0.2 m cells centred on the robot. Every beam is ray-traced to
+mark free space and each hit becomes an obstacle. Around each hit it draws a
+1 m lethal disc, sized to the robot's body, and lets the cost decay out to
+2.5 m. That way the planner prefers open space but can still get close to a
+wall when it has to.
+
+Map memory (`src/robot/map_memory`) stitches those costmaps into a fixed
+32 m square world map at 0.25 m. It fuses a new costmap once the robot has
+travelled 1 m, turned 0.5 rad or waited 2 s, and skips scans taken while
+spinning fast. Each costmap is placed using the robot's TF pose at the scan's
+own timestamp, so obstacles land where they were seen even mid-turn. Newer
+readings overwrite older ones, and an unknown cell never erases a known one.
+
+The planner (`src/robot/planner`) runs A* over the world map: 8-connected,
+Euclidean heuristic, no cutting corners, and a step cost that rises with cell
+cost. Unknown cells count as drivable. A goal clicked on an obstacle snaps to
+the nearest open cell. If the robot is parked inside an inflation band it may
+cross the band to get out, though never a real wall. A path is kept until the
+map blocks it or 5 s pass. A failed plan is retried when the next map
+arrives, and a goal is only dropped after 4 min.
+
+Control (`src/robot/control`) is pure pursuit. It chases the path point 1.2
+to 2.5 m ahead, further at higher speed, along a circular arc. Speed ramps up
+to 0.8 m/s, drops for tight arcs and near the goal, and the robot spins in
+place when the target is far off its heading, with some hysteresis so it
+doesn't flip between spinning and driving. It stops on arrival, when the path
+is cleared, or if odometry goes quiet.
+
+Two smaller nodes support these. `tf_throttle` republishes Gazebo's 1 kHz
+pose stream at 20 Hz on `/tf` so Foxglove stays responsive, and
+`odometry_spoof`, provided by WATonomous, derives `/odom/filtered` from the
+simulator's TF.
+
+Each of the four main packages is split into a `*_core` library holding the
+algorithm, with no ROS calls beyond logging, and a `*_node` executable that
+owns the subscriptions, publishers, timers and parameters. Every tunable is in
+the package's `config/params.yaml`.
 
 ## Running it
 
-Requires Docker Engine (Linux) or Docker Desktop (macOS / WSL). On Apple
+You need Docker Engine on Linux or Docker Desktop on macOS or WSL. On Apple
 Silicon, create `watod-config.local.sh` next to `watod-config.sh` containing
-`PLATFORM="arm64"`.
+`PLATFORM="arm64"` and `ACTIVE_MODULES="robot gazebo vis_tools"`.
 
 ```bash
 ./watod build          # build the robot, gazebo and foxglove images
@@ -38,15 +65,15 @@ Silicon, create `watod-config.local.sh` next to `watod-config.sh` containing
 ./watod down           # stop and remove the containers
 ```
 
-Then open [Foxglove](https://app.foxglove.dev), connect to
-`ws://localhost:<FOXGLOVE_BRIDGE_PORT>` (the port is printed by `./watod up`
-and stored in `modules/.env`), and import the layout at
-`config/wato_asd_training_foxglove_config .json`. Use the **Publish point**
-tool in the 3D panel to click a goal; the robot plans a path and drives to it.
+Then open [Foxglove](https://app.foxglove.dev) and connect to
+`ws://localhost:<FOXGLOVE_BRIDGE_PORT>`. The port is printed by `./watod up`
+and stored in `modules/.env`. Import the layout at
+`config/wato_asd_training_foxglove_config .json`, pick the Publish point tool
+in the 3D panel and click a goal. The robot plans a path and drives to it.
 
-If the hosted Foxglove app will not open the 3D panel, run a local viewer
-instead ([Lichtblick](https://github.com/lichtblick-suite/lichtblick), the
-open-source fork of Foxglove Studio, needs no account):
+If the hosted Foxglove app won't open the 3D panel, run a local viewer
+instead. [Lichtblick](https://github.com/lichtblick-suite/lichtblick) is the
+open-source fork of Foxglove Studio and needs no account:
 
 ```bash
 docker run -d --name wato_viewer --restart unless-stopped -p 8080:8080 \
@@ -54,14 +81,15 @@ docker run -d --name wato_viewer --restart unless-stopped -p 8080:8080 \
 open "http://localhost:8080/?ds=foxglove-websocket&ds.url=ws%3A%2F%2Flocalhost%3A10020"
 ```
 
-Then import `config/wato_path_finding_layout.json` (Layouts ▸ Import from
-file). It shows the world map, the planned path, the clicked goal, the robot
-pose and the planner/control log side by side.
+Import `config/wato_path_finding_layout.json` from Layouts, then Import from
+file. It shows the world map, the planned path, the clicked goal, the robot
+pose and the planner and control logs side by side.
 
 ## Running the unit tests
 
-The core libraries have gtest suites (37 tests across the four packages).
-Inside the robot container:
+The core libraries have gtest suites, 37 tests across the four packages, and
+the robot image build runs them. To run them yourself inside the robot
+container:
 
 ```bash
 ./watod -t robot            # open a shell in the robot container
