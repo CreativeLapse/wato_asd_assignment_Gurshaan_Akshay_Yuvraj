@@ -3,6 +3,9 @@ ARG BASE_IMAGE=ghcr.io/watonomous/robot_base/base:humble-ubuntu22.04
 ################################ Source ################################
 FROM ${BASE_IMAGE} AS source
 
+# The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
+
 WORKDIR ${AMENT_WS}/src
 
 # Copy in source code 
@@ -17,6 +20,9 @@ RUN apt-get -qq update && rosdep update && \
 
 ################################# Dependencies ################################
 FROM ${BASE_IMAGE} AS dependencies
+
+# The ROS apt key baked into the base image expired in 2025; refresh it so apt sees the current index
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor --yes -o /usr/share/keyrings/ros2-latest-archive-keyring.gpg
 
 # RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A4B469963BF863CC
 RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 -y

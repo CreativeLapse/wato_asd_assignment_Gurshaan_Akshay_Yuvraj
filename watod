@@ -23,9 +23,9 @@ function usage {
 }
 
 function run_compose {
-    cd $MONO_DIR
-    if [ ! -z "$(source $MODULES_DIR/.env && echo $ACTIVE_MODULES)" ] && [ -z "$MODULES" ]; then 
-        MODULES="$(source $MODULES_DIR/.env && printf -- " -f $MODULES_DIR/docker-compose.%s.yaml" ${ACTIVE_MODULES[@]})"
+    cd "$MONO_DIR"
+    if [ ! -z "$(source "$MODULES_DIR/.env" && echo $ACTIVE_MODULES)" ] && [ -z "$MODULES" ]; then 
+        MODULES="$(source "$MODULES_DIR/.env" && printf -- " -f modules/docker-compose.%s.yaml" ${ACTIVE_MODULES[@]})"
     fi
 
     echo "Running docker compose --profile ${MODE_OF_OPERATION}${MODULES[@]} $@"
@@ -100,9 +100,9 @@ PLATFORM=${PLATFORM:-"amd64"}
 
 # generate .env file from watod_scripts/watod-setup-docker-env.sh
 if [ ! -z $VERBOSE ]; then # if we want to see all verbose coming from setting up env
-    cd $MONO_DIR && . ./watod_scripts/watod-setup-docker-env.sh
+    cd "$MONO_DIR" && . ./watod_scripts/watod-setup-docker-env.sh
 else
-    cd $MONO_DIR && . ./watod_scripts/watod-setup-docker-env.sh &> /dev/null
+    cd "$MONO_DIR" && . ./watod_scripts/watod-setup-docker-env.sh &> /dev/null
 fi
 
 # override to use arm64 images
