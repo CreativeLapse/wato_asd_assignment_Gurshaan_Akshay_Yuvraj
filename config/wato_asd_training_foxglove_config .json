@@ -112,7 +112,11 @@
         },
         "/map": {
           "visible": true,
-          "colorMode": "costmap",
+          "colorMode": "custom",
+          "minColor": "#15151aff",
+          "maxColor": "#ff3b3bff",
+          "unknownColor": "#00000000",
+          "invalidColor": "#00000000",
           "alpha": 0.5016
         },
         "/costmap": {
