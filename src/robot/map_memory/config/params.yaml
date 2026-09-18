@@ -6,11 +6,14 @@ map_memory_node:
     map_frame: "sim_world"            # frame the global map is expressed in
 
     publish_period_ms: 1000  # ms between map republishes
-    update_distance: 1.5     # m the robot must travel before the next fusion
+    update_distance: 1.0     # m of travel that triggers a fusion
+    update_yaw: 0.5          # rad of turning that triggers a fusion
+    update_period: 2.0       # s without a fusion that triggers one anyway
+    max_fuse_yaw_rate: 0.3   # rad/s, scans taken while turning faster are skipped
 
     global_map:
-      resolution: 0.5   # m per cell (coarser than the local costmap)
-      width: 60         # cells -> 30 m x 30 m, matches the sim arena
-      height: 60
-      origin_x: -15.0   # world position of the bottom-left corner
-      origin_y: -15.0
+      resolution: 0.25  # m per cell
+      width: 128        # cells -> 32 m x 32 m, the arena plus its wall inflation
+      height: 128
+      origin_x: -16.0   # world position of the bottom-left corner
+      origin_y: -16.0

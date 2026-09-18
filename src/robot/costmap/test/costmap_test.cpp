@@ -9,10 +9,10 @@ namespace
 {
 
 // 20x20 grid at 0.5 m: origin (-5, -5), robot in cell (10, 10).
-robot::CostmapCore makeCostmap(double inflation = 1.0)
+robot::CostmapCore makeCostmap(double lethal = 0.5, double inflation = 1.0, double decay = 2.0)
 {
   robot::CostmapCore costmap(rclcpp::get_logger("costmap_test"));
-  costmap.configure(0.5, 20, 20, inflation);
+  costmap.configure(0.5, 20, 20, lethal, inflation, decay);
   return costmap;
 }
 
@@ -26,6 +26,11 @@ sensor_msgs::msg::LaserScan singleBeam(double angle, double range)
   scan.range_max = 10.0;
   scan.ranges = {static_cast<float>(range)};
   return scan;
+}
+
+int decayed(double dist, double lethal, double decay)
+{
+  return static_cast<int>(std::lround(98.0 * std::exp(-decay * (dist - lethal))));
 }
 
 }  // namespace
@@ -46,29 +51,46 @@ TEST(CostmapTest, BeamMarksHitAndClearsPathToIt)
 
   // Hit at (3, 0) -> cell (16, 10).
   EXPECT_EQ(costmap.cellCost(16, 10), 100);
-  // Every cell between the robot and the hit is free, except the one right
-  // next to the obstacle, which the inflation band covers.
-  for (int cx = 10; cx < 15; ++cx) {
+  // Cells between the robot and the inflation band are free.
+  for (int cx = 10; cx < 14; ++cx) {
     EXPECT_EQ(costmap.cellCost(cx, 10), 0) << "cell " << cx;
   }
-  EXPECT_EQ(costmap.cellCost(15, 10), 50);
   // Cells beyond the hit and off the beam stay unknown.
   EXPECT_EQ(costmap.cellCost(19, 10), -1);
   EXPECT_EQ(costmap.cellCost(10, 15), -1);
 }
 
-TEST(CostmapTest, InflationFallsOffLinearly)
+TEST(CostmapTest, LethalDiscThenExponentialDecay)
 {
-  auto costmap = makeCostmap(1.0);
+  auto costmap = makeCostmap(1.0, 2.5, 1.5);
   costmap.processScan(singleBeam(0.0, 3.0));
 
-  // One cell (0.5 m) from the obstacle: 100 * (1 - 0.5 / 1.0) = 50.
-  EXPECT_EQ(costmap.cellCost(17, 10), 50);
-  EXPECT_EQ(costmap.cellCost(16, 11), 50);
-  // Two cells (1.0 m) is exactly the radius: no inflation.
-  EXPECT_EQ(costmap.cellCost(18, 10), -1);
-  // Inflation never lowers a free cell below a real obstacle.
   EXPECT_EQ(costmap.cellCost(16, 10), 100);
+  // Within 1.0 m: lethal.
+  EXPECT_EQ(costmap.cellCost(15, 10), 99);
+  EXPECT_EQ(costmap.cellCost(14, 10), 99);
+  EXPECT_EQ(costmap.cellCost(16, 12), 99);
+  // Past it the cost decays with distance.
+  EXPECT_EQ(costmap.cellCost(13, 10), decayed(1.5, 1.0, 1.5));
+  EXPECT_EQ(costmap.cellCost(12, 10), decayed(2.0, 1.0, 1.5));
+  EXPECT_EQ(costmap.cellCost(11, 10), decayed(2.5, 1.0, 1.5));
+  EXPECT_GT(costmap.cellCost(13, 10), costmap.cellCost(12, 10));
+  // Beyond the inflation radius nothing is written.
+  EXPECT_EQ(costmap.cellCost(16, 16), -1);
+}
+
+TEST(CostmapTest, InflationNeverLowersACell)
+{
+  auto costmap = makeCostmap(1.0, 2.5, 1.5);
+  sensor_msgs::msg::LaserScan scan = singleBeam(0.0, 3.0);
+  scan.angle_max = 0.0;
+  scan.ranges = {3.0f, 3.5f};
+  costmap.processScan(scan);
+
+  // Two hits in a row: the nearer one stays a full obstacle even though it
+  // sits inside the other's lethal disc.
+  EXPECT_EQ(costmap.cellCost(16, 10), 100);
+  EXPECT_EQ(costmap.cellCost(17, 10), 100);
 }
 
 TEST(CostmapTest, InfiniteBeamClearsWithoutObstacle)
@@ -92,6 +114,7 @@ TEST(CostmapTest, EachScanStartsFresh)
   costmap.processScan(singleBeam(0.0, 3.0));
   costmap.processScan(singleBeam(0.0, 2.0));
 
-  EXPECT_EQ(costmap.cellCost(16, 10), -1);  // old hit at (3, 0) is gone
+  EXPECT_NE(costmap.cellCost(16, 10), 100); // old hit at (3, 0) is gone
+  EXPECT_EQ(costmap.cellCost(17, 10), -1);  // and so is its inflation
   EXPECT_EQ(costmap.cellCost(14, 10), 100); // new hit at (2, 0)
 }

@@ -5,9 +5,19 @@ control_node:
     cmd_vel_topic: "/cmd_vel"     # Twist output to the robot
 
     control_period_ms: 100     # ms, 10 Hz control loop
-    lookahead_distance: 1.0    # m, how far ahead on the path to aim
-    linear_speed: 0.5          # m/s, cruising speed
+    odom_timeout: 0.5          # s without odometry before the robot is held still
+
+    max_speed: 0.8             # m/s, cruising speed on a straight
+    min_speed: 0.15            # m/s, floor while creeping up to the goal
     max_angular_speed: 1.0     # rad/s, turning rate limit
-    goal_tolerance: 0.2        # m, stop when this close to the path's end
-    turn_in_place_angle: 0.8   # rad, spin without driving above this heading error
-    slowdown_distance: 1.0     # m, start easing off this far from the end
+    accel: 0.5                 # m/s^2, speed ramp up
+    decel: 1.0                 # m/s^2, speed ramp down
+    lookahead_min: 1.2         # m, aim at least this far ahead on the path
+    lookahead_max: 2.5         # m, and at most this far
+    lookahead_gain: 2.0        # s, lookahead = gain * speed between those limits
+    curvature_gain: 2.0        # speed = max_speed / (1 + gain * |curvature|)
+    turn_enter_angle: 1.0      # rad, spin in place above this heading error
+    turn_exit_angle: 0.3       # rad, resume driving below this
+    turn_gain: 1.5             # rad/s per rad of heading error while spinning
+    slowdown_distance: 1.5     # m, start easing off this far from the end
+    goal_tolerance: 0.3        # m, stop when this close to the path's end

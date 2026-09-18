@@ -15,6 +15,9 @@ find_package(ament_cmake REQUIRED)     # ROS2 build tool
 find_package(rclcpp REQUIRED)          # ROS2 C++ package
 find_package(nav_msgs REQUIRED)        # OccupancyGrid, Odometry
 find_package(geometry_msgs REQUIRED)   # Quaternion
+find_package(std_msgs REQUIRED)        # Header
+find_package(tf2 REQUIRED)             # TransformException
+find_package(tf2_ros REQUIRED)         # Buffer, TransformListener
 
 # Compiles source files into a library
 # A library is not executed, instead other executables can link
@@ -33,7 +36,7 @@ ament_target_dependencies(map_memory_lib rclcpp nav_msgs)
 add_executable(map_memory_node src/map_memory_node.cpp)
 # Link to the previously built library to access map_memory classes and methods
 target_link_libraries(map_memory_node map_memory_lib)
-ament_target_dependencies(map_memory_node rclcpp nav_msgs geometry_msgs)
+ament_target_dependencies(map_memory_node rclcpp nav_msgs geometry_msgs std_msgs tf2 tf2_ros)
 
 # Unit tests for the core library (colcon test)
 option(BUILD_TESTING "Build tests" ON)

@@ -9,10 +9,12 @@ PlannerNode::PlannerNode()
     planner_(robot::PlannerCore(this->get_logger())),
     goal_tolerance_(0.0),
     plan_timeout_(0.0),
+    replan_period_(0.0),
     lethal_cost_(0),
     unknown_cost_(0),
     cost_weight_(0.0),
     snap_radius_(0),
+    escape_radius_(0),
     state_(State::WAITING_FOR_GOAL),
     have_odom_(false),
     robot_x_(0.0),
@@ -21,10 +23,12 @@ PlannerNode::PlannerNode()
     goal_y_(0.0),
     planned_goal_x_(0.0),
     planned_goal_y_(0.0),
-    goal_start_time_(0, 0, RCL_ROS_TIME)
+    goal_start_time_(0, 0, RCL_ROS_TIME),
+    have_path_(false),
+    path_time_(0, 0, RCL_ROS_TIME)
 {
   loadParameters();
-  planner_.configure(lethal_cost_, unknown_cost_, cost_weight_, snap_radius_);
+  planner_.configure(lethal_cost_, unknown_cost_, cost_weight_, snap_radius_, escape_radius_);
 
   map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
     map_topic_, 10, std::bind(&PlannerNode::onMap, this, std::placeholders::_1));
@@ -46,19 +50,28 @@ void PlannerNode::loadParameters()
   goal_topic_ = this->declare_parameter<std::string>("goal_topic", "/goal_point");
   odom_topic_ = this->declare_parameter<std::string>("odom_topic", "/odom/filtered");
   path_topic_ = this->declare_parameter<std::string>("path_topic", "/path");
-  goal_tolerance_ = this->declare_parameter<double>("goal_tolerance", 0.5);
-  plan_timeout_ = this->declare_parameter<double>("plan_timeout_seconds", 60.0);
-  lethal_cost_ = this->declare_parameter<int>("lethal_cost", 50);
-  unknown_cost_ = this->declare_parameter<int>("unknown_cost", 30);
-  cost_weight_ = this->declare_parameter<double>("cost_weight", 3.0);
-  snap_radius_ = this->declare_parameter<int>("snap_radius", 10);
+  goal_tolerance_ = this->declare_parameter<double>("goal_tolerance", 0.6);
+  plan_timeout_ = this->declare_parameter<double>("plan_timeout_seconds", 240.0);
+  replan_period_ = this->declare_parameter<double>("replan_period", 5.0);
+  lethal_cost_ = this->declare_parameter<int>("lethal_cost", 99);
+  unknown_cost_ = this->declare_parameter<int>("unknown_cost", 10);
+  cost_weight_ = this->declare_parameter<double>("cost_weight", 5.0);
+  snap_radius_ = this->declare_parameter<int>("snap_radius", 20);
+  escape_radius_ = this->declare_parameter<int>("escape_radius", 6);
 }
 
 void PlannerNode::onMap(const nav_msgs::msg::OccupancyGrid::SharedPtr map)
 {
   map_ = map;
-  // A new map may have revealed an obstacle on the current path.
-  if (state_ == State::WAITING_FOR_ROBOT_TO_REACH_GOAL) {
+  if (state_ != State::WAITING_FOR_ROBOT_TO_REACH_GOAL) {
+    return;
+  }
+
+  // Keep the current path unless the map has broken it or it has gone
+  // stale; replanning on every map makes the robot twitch between
+  // near-equal routes.
+  const bool stale = (this->now() - path_time_).seconds() > replan_period_;
+  if (!have_path_ || stale || !planner_.pathIsClear(*map_, path_, robot_x_, robot_y_)) {
     replan();
   }
 }
@@ -71,6 +84,7 @@ void PlannerNode::onGoal(const geometry_msgs::msg::PointStamped::SharedPtr goal)
   planned_goal_y_ = goal_y_;
   goal_start_time_ = this->now();
   state_ = State::WAITING_FOR_ROBOT_TO_REACH_GOAL;
+  have_path_ = false;
 
   RCLCPP_INFO(this->get_logger(), "New goal: (%.2f, %.2f)", goal_x_, goal_y_);
   replan();
@@ -89,7 +103,7 @@ void PlannerNode::onTimer()
     return;
   }
 
-  if (have_odom_ &&
+  if (have_odom_ && have_path_ &&
       std::hypot(robot_x_ - planned_goal_x_, robot_y_ - planned_goal_y_) < goal_tolerance_) {
     finishGoal("Goal reached");
     return;
@@ -118,11 +132,19 @@ void PlannerNode::replan()
   const bool ok = planner_.plan(
     *map_, robot_x_, robot_y_, goal_x_, goal_y_, path, planned_goal_x_, planned_goal_y_);
   if (!ok) {
-    finishGoal("Planning failed");
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                         "Planning failed; will retry on the next map.");
+    if (have_path_) {
+      have_path_ = false;
+      publishEmptyPath();
+    }
     return;
   }
 
   path.header.stamp = this->now();
+  path_ = path;
+  path_time_ = path.header.stamp;
+  have_path_ = true;
   path_pub_->publish(path);
   RCLCPP_INFO(this->get_logger(), "Published path with %zu waypoints", path.poses.size());
 }
@@ -131,7 +153,12 @@ void PlannerNode::finishGoal(const char* reason)
 {
   RCLCPP_INFO(this->get_logger(), "%s; waiting for the next goal.", reason);
   state_ = State::WAITING_FOR_GOAL;
+  have_path_ = false;
+  publishEmptyPath();
+}
 
+void PlannerNode::publishEmptyPath()
+{
   // An empty path is the controller's cue to stop.
   nav_msgs::msg::Path empty;
   empty.header.stamp = this->now();

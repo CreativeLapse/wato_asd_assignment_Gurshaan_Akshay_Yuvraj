@@ -36,10 +36,11 @@ int8_t cellAtWorld(const nav_msgs::msg::OccupancyGrid& map, double wx, double wy
   return map.data[cy * kSize + cx];
 }
 
+// lethal 99, unknown 10, weight 5, snap 12 cells, escape 3 cells
 robot::PlannerCore makePlanner()
 {
   robot::PlannerCore planner(rclcpp::get_logger("planner_test"));
-  planner.configure(50, 30, 3.0, 10);
+  planner.configure(99, 10, 5.0, 12, 3);
   return planner;
 }
 
@@ -65,12 +66,10 @@ TEST(PlannerTest, StraightLineOnEmptyMap)
 
   ASSERT_FALSE(path.poses.empty());
   EXPECT_EQ(path.header.frame_id, "map");
-  // Starts at the robot's cell and ends at the goal's cell.
   EXPECT_NEAR(path.poses.front().pose.position.x, -1.75, 1e-9);
   EXPECT_NEAR(path.poses.back().pose.position.x, 2.25, 1e-9);
   EXPECT_NEAR(gx, 2.25, 1e-9);
   EXPECT_NEAR(gy, 0.25, 1e-9);
-  // Straight line: 8 steps for 8 cells.
   EXPECT_EQ(path.poses.size(), 9u);
 }
 
@@ -88,7 +87,7 @@ TEST(PlannerTest, RoutesAroundWall)
   bool crossed_through_gap = false;
   for (const auto& pose : path.poses) {
     const auto& p = pose.pose.position;
-    EXPECT_LT(cellAtWorld(map, p.x, p.y), 50) << "path touches a wall cell";
+    EXPECT_LT(cellAtWorld(map, p.x, p.y), 99) << "path touches a wall cell";
     // The wall sits at world x in [0, 0.5); the gap is y >= 2.5.
     if (p.x > 0.0 && p.x < 0.5) {
       crossed_through_gap = p.y >= 2.5;
@@ -142,10 +141,78 @@ TEST(PlannerTest, BlockedGoalSnapsToNearestOpenCell)
 
   ASSERT_TRUE(planner.plan(map, -2.0, 0.0, 2.75, 0.25, path, gx, gy));
 
-  EXPECT_LT(cellAtWorld(map, gx, gy), 50);
+  EXPECT_LT(cellAtWorld(map, gx, gy), 99);
   EXPECT_NEAR(std::hypot(gx - 2.75, gy - 0.25), 1.0, 1e-9);  // two cells away
   EXPECT_NEAR(path.poses.back().pose.position.x, gx, 1e-9);
   EXPECT_NEAR(path.poses.back().pose.position.y, gy, 1e-9);
+}
+
+TEST(PlannerTest, EscapesInflationBandAroundStart)
+{
+  auto planner = makePlanner();
+  auto map = makeMap();
+  // The robot at cell (4, 10) is boxed in by a 2-cell ring of inflation (99)
+  // with a real wall (100) directly below it.
+  for (int cy = 8; cy <= 12; ++cy) {
+    for (int cx = 2; cx <= 6; ++cx) {
+      setCell(map, cx, cy, 99);
+    }
+  }
+  setCell(map, 4, 8, 100);
+  setCell(map, 4, 9, 100);
+  nav_msgs::msg::Path path;
+  double gx = 0.0;
+  double gy = 0.0;
+
+  ASSERT_TRUE(planner.plan(map, -2.75, 0.25, 3.0, 0.0, path, gx, gy));
+
+  // It leaves the band, never through the wall, and never re-enters it.
+  bool left_band = false;
+  for (const auto& pose : path.poses) {
+    const auto& p = pose.pose.position;
+    const int8_t cost = cellAtWorld(map, p.x, p.y);
+    EXPECT_NE(cost, 100) << "path crosses the wall";
+    if (cost < 99) {
+      left_band = true;
+    } else {
+      EXPECT_FALSE(left_band) << "path re-entered the band";
+    }
+  }
+  EXPECT_TRUE(left_band);
+}
+
+TEST(PlannerTest, LethalBandFarFromStartIsStillAWall)
+{
+  auto planner = makePlanner();
+  auto map = makeMap();
+  for (int cy = 0; cy < kSize; ++cy) {
+    setCell(map, 10, cy, 99);
+  }
+  nav_msgs::msg::Path path;
+  double gx = 0.0;
+  double gy = 0.0;
+
+  // Start is 6 cells from the band, twice the escape radius.
+  EXPECT_FALSE(planner.plan(map, -3.0, 0.0, 3.0, 0.0, path, gx, gy));
+}
+
+TEST(PlannerTest, PathIsClearUntilAnObstacleLandsOnIt)
+{
+  auto planner = makePlanner();
+  auto map = makeMap();
+  nav_msgs::msg::Path path;
+  double gx = 0.0;
+  double gy = 0.0;
+  ASSERT_TRUE(planner.plan(map, -3.0, 0.0, 3.0, 0.0, path, gx, gy));
+  EXPECT_TRUE(planner.pathIsClear(map, path, -3.0, 0.0));
+
+  // Inflation right next to the robot is tolerated, it can drive out of it.
+  setCell(map, 5, 10, 99);
+  EXPECT_TRUE(planner.pathIsClear(map, path, -3.0, 0.0));
+
+  // A wall further along is not.
+  setCell(map, 12, 10, 100);
+  EXPECT_FALSE(planner.pathIsClear(map, path, -3.0, 0.0));
 }
 
 TEST(PlannerTest, UnknownCellsAreDrivable)

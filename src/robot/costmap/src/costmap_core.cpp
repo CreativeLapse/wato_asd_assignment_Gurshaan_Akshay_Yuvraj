@@ -11,29 +11,37 @@ namespace
 {
 constexpr int8_t kUnknown = -1;
 constexpr int8_t kFree = 0;
+constexpr int8_t kLethal = 99;
 constexpr int8_t kOccupied = 100;
 }  // namespace
 
 CostmapCore::CostmapCore(const rclcpp::Logger& logger)
-  : inflation_radius_(0.0), logger_(logger) {}
+  : lethal_radius_(0.0), inflation_radius_(0.0), decay_(0.0), logger_(logger) {}
 
-void CostmapCore::configure(double resolution, int width, int height, double inflation_radius)
+void CostmapCore::configure(
+  double resolution,
+  int width,
+  int height,
+  double lethal_radius,
+  double inflation_radius,
+  double decay)
 {
   grid_.info.resolution = resolution;
   grid_.info.width = width;
   grid_.info.height = height;
-  // Centre the robot: the origin is the world position of cell (0, 0)'s corner.
   grid_.info.origin.position.x = -0.5 * width * resolution;
   grid_.info.origin.position.y = -0.5 * height * resolution;
   grid_.info.origin.position.z = 0.0;
   grid_.info.origin.orientation.w = 1.0;
   grid_.data.assign(static_cast<size_t>(width) * height, kUnknown);
 
-  inflation_radius_ = inflation_radius;
+  lethal_radius_ = lethal_radius;
+  inflation_radius_ = std::max(inflation_radius, lethal_radius);
+  decay_ = decay;
   buildInflationKernel();
 
-  RCLCPP_INFO(logger_, "Costmap configured: %dx%d cells at %.2f m, inflation %.2f m",
-              width, height, resolution, inflation_radius);
+  RCLCPP_INFO(logger_, "Costmap configured: %dx%d cells at %.2f m, lethal %.2f m, inflation %.2f m",
+              width, height, resolution, lethal_radius_, inflation_radius_);
 }
 
 void CostmapCore::buildInflationKernel()
@@ -44,12 +52,18 @@ void CostmapCore::buildInflationKernel()
 
   for (int dy = -reach; dy <= reach; ++dy) {
     for (int dx = -reach; dx <= reach; ++dx) {
-      const double dist = std::hypot(dx, dy) * res;
-      if (dist >= inflation_radius_) {
+      if (dx == 0 && dy == 0) {
         continue;
       }
-      // Linear falloff: 100 on the obstacle, 0 at the edge of the radius.
-      const int cost = static_cast<int>(std::lround(kOccupied * (1.0 - dist / inflation_radius_)));
+      const double dist = std::hypot(dx, dy) * res;
+      if (dist > inflation_radius_) {
+        continue;
+      }
+
+      int cost = kLethal;
+      if (dist > lethal_radius_) {
+        cost = static_cast<int>(std::lround((kLethal - 1) * std::exp(-decay_ * (dist - lethal_radius_))));
+      }
       if (cost > 0) {
         kernel_.push_back({dx, dy, static_cast<int8_t>(cost)});
       }
@@ -76,8 +90,8 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
       continue;
     }
 
-    // A beam that never hit anything still tells us the cells up to the
-    // sensor's reach are free; it just contributes no obstacle.
+    // A beam that never hit anything still clears the cells out to the
+    // sensor's reach; it just contributes no obstacle.
     const bool hit = std::isfinite(range) && range <= scan.range_max;
     if (!hit) {
       range = scan.range_max;
@@ -89,8 +103,11 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
     traceFree(robot_cx, robot_cy, end_cx, end_cy);
 
     if (hit && inBounds(end_cx, end_cy)) {
-      at(end_cx, end_cy) = kOccupied;
-      obstacles.emplace_back(end_cx, end_cy);
+      int8_t& cell = at(end_cx, end_cy);
+      if (cell != kOccupied) {
+        cell = kOccupied;
+        obstacles.emplace_back(end_cx, end_cy);
+      }
     }
   }
 

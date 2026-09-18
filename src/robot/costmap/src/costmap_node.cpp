@@ -8,10 +8,12 @@ CostmapNode::CostmapNode()
     resolution_(0.0),
     width_(0),
     height_(0),
-    inflation_radius_(0.0)
+    lethal_radius_(0.0),
+    inflation_radius_(0.0),
+    decay_(0.0)
 {
   loadParameters();
-  costmap_.configure(resolution_, width_, height_, inflation_radius_);
+  costmap_.configure(resolution_, width_, height_, lethal_radius_, inflation_radius_, decay_);
 
   scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
     scan_topic_, 10, std::bind(&CostmapNode::onScan, this, std::placeholders::_1));
@@ -25,10 +27,12 @@ void CostmapNode::loadParameters()
 {
   scan_topic_ = this->declare_parameter<std::string>("laserscan_topic", "/lidar");
   costmap_topic_ = this->declare_parameter<std::string>("costmap_topic", "/costmap");
-  resolution_ = this->declare_parameter<double>("costmap.resolution", 0.4);
-  width_ = this->declare_parameter<int>("costmap.width", 120);
-  height_ = this->declare_parameter<int>("costmap.height", 120);
-  inflation_radius_ = this->declare_parameter<double>("costmap.inflation_radius", 1.0);
+  resolution_ = this->declare_parameter<double>("costmap.resolution", 0.2);
+  width_ = this->declare_parameter<int>("costmap.width", 200);
+  height_ = this->declare_parameter<int>("costmap.height", 200);
+  lethal_radius_ = this->declare_parameter<double>("costmap.lethal_radius", 1.0);
+  inflation_radius_ = this->declare_parameter<double>("costmap.inflation_radius", 2.5);
+  decay_ = this->declare_parameter<double>("costmap.decay", 1.5);
 }
 
 void CostmapNode::onScan(const sensor_msgs::msg::LaserScan::SharedPtr scan)

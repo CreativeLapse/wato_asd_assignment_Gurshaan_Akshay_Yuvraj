@@ -2,27 +2,32 @@
 #include <cmath>
 #include <limits>
 #include <queue>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "planner_core.hpp"
 
 namespace robot
 {
 
+namespace
+{
+constexpr int kObstacle = 100;
+}  // namespace
+
 PlannerCore::PlannerCore(const rclcpp::Logger& logger)
-  : lethal_cost_(50),
-    unknown_cost_(30),
-    cost_weight_(3.0),
-    snap_radius_(10),
+  : lethal_cost_(99),
+    unknown_cost_(10),
+    cost_weight_(5.0),
+    snap_radius_(20),
+    escape_radius_(6),
     logger_(logger) {}
 
-void PlannerCore::configure(int lethal_cost, int unknown_cost, double cost_weight, int snap_radius)
+void PlannerCore::configure(int lethal_cost, int unknown_cost, double cost_weight, int snap_radius, int escape_radius)
 {
   lethal_cost_ = lethal_cost;
   unknown_cost_ = unknown_cost;
   cost_weight_ = cost_weight;
   snap_radius_ = snap_radius;
+  escape_radius_ = escape_radius;
 }
 
 bool PlannerCore::plan(
@@ -39,8 +44,7 @@ bool PlannerCore::plan(
   path.poses.clear();
   path.header = map_.header;
 
-  CellIndex start;
-  if (!worldToCell(start_x, start_y, start)) {
+  if (!worldToCell(start_x, start_y, start_)) {
     RCLCPP_WARN(logger_, "Start (%.2f, %.2f) is off the map", start_x, start_y);
     return false;
   }
@@ -50,12 +54,6 @@ bool PlannerCore::plan(
     return false;
   }
 
-  // The robot can start inside an inflation band (it drives close to walls),
-  // and a clicked goal can land on one. Slide both to the nearest open cell.
-  if (isBlocked(start) && !nearestOpenCell(start, start)) {
-    RCLCPP_WARN(logger_, "No open cell near the start; cannot plan");
-    return false;
-  }
   if (isBlocked(goal)) {
     const CellIndex requested = goal;
     if (!nearestOpenCell(goal, goal)) {
@@ -68,9 +66,9 @@ bool PlannerCore::plan(
   cellToWorld(goal, planned_goal_x, planned_goal_y);
 
   std::vector<CellIndex> cells;
-  if (!aStar(start, goal, cells)) {
+  if (!aStar(start_, goal, cells)) {
     RCLCPP_WARN(logger_, "A* found no path from (%d, %d) to (%d, %d)",
-                start.x, start.y, goal.x, goal.y);
+                start_.x, start_.y, goal.x, goal.y);
     return false;
   }
 
@@ -85,14 +83,38 @@ bool PlannerCore::plan(
   return true;
 }
 
+bool PlannerCore::pathIsClear(
+  const nav_msgs::msg::OccupancyGrid& map,
+  const nav_msgs::msg::Path& path,
+  double robot_x,
+  double robot_y)
+{
+  map_ = map;
+  if (!worldToCell(robot_x, robot_y, start_)) {
+    return false;
+  }
+
+  for (const auto& pose : path.poses) {
+    CellIndex cell;
+    if (!worldToCell(pose.pose.position.x, pose.pose.position.y, cell)) {
+      return false;
+    }
+    if (!canEnter(cell)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool PlannerCore::aStar(const CellIndex& start, const CellIndex& goal, std::vector<CellIndex>& cells) const
 {
-  std::unordered_map<CellIndex, double, CellIndexHash> g_score;
-  std::unordered_map<CellIndex, CellIndex, CellIndexHash> came_from;
-  std::unordered_set<CellIndex, CellIndexHash> closed;
+  const size_t cell_count = static_cast<size_t>(map_.info.width) * map_.info.height;
+  std::vector<double> g_score(cell_count, std::numeric_limits<double>::infinity());
+  std::vector<int> came_from(cell_count, -1);
+  std::vector<char> closed(cell_count, 0);
   std::priority_queue<AStarNode, std::vector<AStarNode>, CompareF> open;
 
-  g_score[start] = 0.0;
+  g_score[toIndex(start)] = 0.0;
   open.emplace(start, heuristic(start, goal));
 
   while (!open.empty()) {
@@ -101,23 +123,20 @@ bool PlannerCore::aStar(const CellIndex& start, const CellIndex& goal, std::vect
 
     // A cell can sit in the queue more than once with stale scores; only the
     // first (cheapest) pop matters.
-    if (!closed.insert(current).second) {
+    const int current_index = toIndex(current);
+    if (closed[current_index]) {
       continue;
     }
+    closed[current_index] = 1;
 
     if (current == goal) {
       cells.clear();
-      for (CellIndex c = goal; ; c = came_from.at(c)) {
-        cells.push_back(c);
-        if (c == start) {
-          break;
-        }
+      for (int i = current_index; i != -1; i = came_from[i]) {
+        cells.push_back(fromIndex(i));
       }
       std::reverse(cells.begin(), cells.end());
       return true;
     }
-
-    const double current_g = g_score[current];
 
     for (int dy = -1; dy <= 1; ++dy) {
       for (int dx = -1; dx <= 1; ++dx) {
@@ -125,29 +144,31 @@ bool PlannerCore::aStar(const CellIndex& start, const CellIndex& goal, std::vect
           continue;
         }
         const CellIndex next(current.x + dx, current.y + dy);
-        if (!inBounds(next) || isBlocked(next) || closed.count(next)) {
+        if (!inBounds(next) || !canEnter(next)) {
+          continue;
+        }
+        const int next_index = toIndex(next);
+        if (closed[next_index]) {
           continue;
         }
 
         // Don't let a diagonal step squeeze between two blocked cells.
         const bool diagonal = (dx != 0 && dy != 0);
         if (diagonal &&
-            (isBlocked(CellIndex(current.x + dx, current.y)) ||
-             isBlocked(CellIndex(current.x, current.y + dy)))) {
+            (!canEnter(CellIndex(current.x + dx, current.y)) ||
+             !canEnter(CellIndex(current.x, current.y + dy)))) {
           continue;
         }
 
         const double distance = diagonal ? std::sqrt(2.0) : 1.0;
         const double step = distance * (1.0 + cost_weight_ * cellCost(next) / 100.0);
-        const double tentative_g = current_g + step;
-
-        const auto known = g_score.find(next);
-        if (known != g_score.end() && tentative_g >= known->second) {
+        const double tentative_g = g_score[current_index] + step;
+        if (tentative_g >= g_score[next_index]) {
           continue;
         }
 
-        g_score[next] = tentative_g;
-        came_from[next] = current;
+        g_score[next_index] = tentative_g;
+        came_from[next_index] = current_index;
         open.emplace(next, tentative_g + heuristic(next, goal));
       }
     }
@@ -169,8 +190,6 @@ bool PlannerCore::nearestOpenCell(const CellIndex& from, CellIndex& out) const
   // before `out` gets written.
   const CellIndex centre = from;
 
-  // The search window is small (snap_radius_ cells each way), so simply
-  // scan it and keep the open cell that's closest as the crow flies.
   bool found = false;
   double best = std::numeric_limits<double>::infinity();
   for (int dy = -snap_radius_; dy <= snap_radius_; ++dy) {
@@ -193,7 +212,7 @@ bool PlannerCore::nearestOpenCell(const CellIndex& from, CellIndex& out) const
 int PlannerCore::cellCost(const CellIndex& cell) const
 {
   if (!inBounds(cell)) {
-    return 100;
+    return kObstacle;
   }
   const int8_t raw = map_.data[static_cast<size_t>(cell.y) * map_.info.width + cell.x];
   return raw < 0 ? unknown_cost_ : raw;
@@ -202,6 +221,20 @@ int PlannerCore::cellCost(const CellIndex& cell) const
 bool PlannerCore::isBlocked(const CellIndex& cell) const
 {
   return cellCost(cell) >= lethal_cost_;
+}
+
+bool PlannerCore::nearStart(const CellIndex& cell) const
+{
+  return std::hypot(cell.x - start_.x, cell.y - start_.y) <= escape_radius_;
+}
+
+bool PlannerCore::canEnter(const CellIndex& cell) const
+{
+  const int cost = cellCost(cell);
+  if (cost < lethal_cost_) {
+    return true;
+  }
+  return cost < kObstacle && nearStart(cell);
 }
 
 bool PlannerCore::inBounds(const CellIndex& cell) const
@@ -224,6 +257,17 @@ void PlannerCore::cellToWorld(const CellIndex& cell, double& wx, double& wy) con
   const double res = map_.info.resolution;
   wx = map_.info.origin.position.x + (cell.x + 0.5) * res;
   wy = map_.info.origin.position.y + (cell.y + 0.5) * res;
+}
+
+int PlannerCore::toIndex(const CellIndex& cell) const
+{
+  return cell.y * static_cast<int>(map_.info.width) + cell.x;
+}
+
+CellIndex PlannerCore::fromIndex(int index) const
+{
+  const int width = static_cast<int>(map_.info.width);
+  return CellIndex(index % width, index / width);
 }
 
 }  // namespace robot

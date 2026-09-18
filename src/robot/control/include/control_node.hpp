@@ -12,7 +12,7 @@
 #include "control_core.hpp"
 
 // Follows the latest path with pure pursuit, publishing velocity commands
-// on a fixed timer.
+// on a fixed timer. Stops if odometry goes quiet.
 class ControlNode : public rclcpp::Node {
   public:
     ControlNode();
@@ -36,17 +36,14 @@ class ControlNode : public rclcpp::Node {
     std::string odom_topic_;
     std::string cmd_vel_topic_;
     int control_period_ms_;
-    double lookahead_distance_;
-    double linear_speed_;
-    double max_angular_speed_;
-    double goal_tolerance_;
-    double turn_in_place_angle_;
-    double slowdown_distance_;
+    double odom_timeout_;
+    robot::ControlParams params_;
 
     bool have_odom_;
     double robot_x_;
     double robot_y_;
     double robot_yaw_;
+    rclcpp::Time last_odom_time_;
     bool announced_arrival_;
 };
 

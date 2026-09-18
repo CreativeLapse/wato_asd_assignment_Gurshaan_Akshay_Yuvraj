@@ -28,7 +28,9 @@ class CostmapNode : public rclcpp::Node {
     double resolution_;
     int width_;
     int height_;
+    double lethal_radius_;
     double inflation_radius_;
+    double decay_;
 };
 
 #endif  // COSTMAP_NODE_HPP_

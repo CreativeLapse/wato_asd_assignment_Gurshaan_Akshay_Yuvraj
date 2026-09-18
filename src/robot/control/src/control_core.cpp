@@ -8,28 +8,11 @@ namespace robot
 {
 
 ControlCore::ControlCore(const rclcpp::Logger& logger)
-  : logger_(logger),
-    lookahead_distance_(1.0),
-    linear_speed_(0.5),
-    max_angular_speed_(1.0),
-    goal_tolerance_(0.2),
-    turn_in_place_angle_(0.8),
-    slowdown_distance_(1.0) {}
+  : logger_(logger), speed_(0.0), turning_(false) {}
 
-void ControlCore::configure(
-  double lookahead_distance,
-  double linear_speed,
-  double max_angular_speed,
-  double goal_tolerance,
-  double turn_in_place_angle,
-  double slowdown_distance)
+void ControlCore::configure(const ControlParams& params)
 {
-  lookahead_distance_ = lookahead_distance;
-  linear_speed_ = linear_speed;
-  max_angular_speed_ = max_angular_speed;
-  goal_tolerance_ = goal_tolerance;
-  turn_in_place_angle_ = turn_in_place_angle;
-  slowdown_distance_ = slowdown_distance;
+  params_ = params;
 }
 
 void ControlCore::setPath(const nav_msgs::msg::Path& path)
@@ -39,11 +22,19 @@ void ControlCore::setPath(const nav_msgs::msg::Path& path)
   for (const auto& pose : path.poses) {
     path_.push_back(pose.pose.position);
   }
+  reset();
 }
 
 void ControlCore::clearPath()
 {
   path_.clear();
+  reset();
+}
+
+void ControlCore::reset()
+{
+  speed_ = 0.0;
+  turning_ = false;
 }
 
 bool ControlCore::goalReached(double robot_x, double robot_y) const
@@ -52,17 +43,16 @@ bool ControlCore::goalReached(double robot_x, double robot_y) const
     return true;
   }
   const auto& goal = path_.back();
-  return std::hypot(goal.x - robot_x, goal.y - robot_y) <= goal_tolerance_;
+  return std::hypot(goal.x - robot_x, goal.y - robot_y) <= params_.goal_tolerance;
 }
 
-bool ControlCore::findLookahead(double robot_x, double robot_y, geometry_msgs::msg::Point& out) const
+bool ControlCore::findLookahead(
+  double robot_x, double robot_y, double lookahead, geometry_msgs::msg::Point& out) const
 {
   if (path_.empty()) {
     return false;
   }
 
-  // Start from the point nearest the robot so we never chase a point we
-  // have already passed, then walk forward until we're a lookahead away.
   size_t nearest = 0;
   double nearest_dist = std::numeric_limits<double>::infinity();
   for (size_t i = 0; i < path_.size(); ++i) {
@@ -74,25 +64,30 @@ bool ControlCore::findLookahead(double robot_x, double robot_y, geometry_msgs::m
   }
 
   for (size_t i = nearest; i < path_.size(); ++i) {
-    if (std::hypot(path_[i].x - robot_x, path_[i].y - robot_y) >= lookahead_distance_) {
+    if (std::hypot(path_[i].x - robot_x, path_[i].y - robot_y) >= lookahead) {
       out = path_[i];
       return true;
     }
   }
 
-  // Everything left is closer than the lookahead: aim for the end.
   out = path_.back();
   return true;
 }
 
-geometry_msgs::msg::Twist ControlCore::computeCommand(double robot_x, double robot_y, double robot_yaw) const
+geometry_msgs::msg::Twist ControlCore::computeCommand(
+  double robot_x, double robot_y, double robot_yaw, double dt)
 {
   geometry_msgs::msg::Twist cmd;
 
-  geometry_msgs::msg::Point target;
-  if (!findLookahead(robot_x, robot_y, target) || goalReached(robot_x, robot_y)) {
+  if (path_.empty() || goalReached(robot_x, robot_y)) {
+    reset();
     return cmd;
   }
+
+  const double lookahead = std::clamp(
+    params_.lookahead_gain * speed_, params_.lookahead_min, params_.lookahead_max);
+  geometry_msgs::msg::Point target;
+  findLookahead(robot_x, robot_y, lookahead, target);
 
   // Express the target in the robot's frame: x forward, y to the left.
   const double dx = target.x - robot_x;
@@ -101,26 +96,39 @@ geometry_msgs::msg::Twist ControlCore::computeCommand(double robot_x, double rob
   const double left = -std::sin(robot_yaw) * dx + std::cos(robot_yaw) * dy;
   const double heading_error = std::atan2(left, forward);
 
-  // Facing the wrong way: spin toward the target before driving.
-  if (std::abs(heading_error) > turn_in_place_angle_) {
-    cmd.angular.z = std::clamp(heading_error, -max_angular_speed_, max_angular_speed_);
+  const double turn_threshold = turning_ ? params_.turn_exit_angle : params_.turn_enter_angle;
+  if (std::abs(heading_error) > turn_threshold) {
+    turning_ = true;
+    speed_ = 0.0;
+    cmd.angular.z = std::clamp(
+      params_.turn_gain * heading_error, -params_.max_angular_speed, params_.max_angular_speed);
     return cmd;
   }
+  turning_ = false;
 
   // Pure pursuit: the arc through the robot and the target has curvature
   // 2 * y / L^2, and the angular rate that follows it is v * curvature.
   const double dist_sq = forward * forward + left * left;
   const double curvature = (dist_sq > 1e-9) ? (2.0 * left / dist_sq) : 0.0;
 
-  // Ease off as the end of the path comes up so we stop on it, not past it.
+  double target_speed = params_.max_speed / (1.0 + params_.curvature_gain * std::abs(curvature));
+  target_speed *= std::max(std::cos(heading_error), 0.0);
+
   const auto& goal = path_.back();
   const double to_goal = std::hypot(goal.x - robot_x, goal.y - robot_y);
-  const double speed_scale = (slowdown_distance_ > 0.0)
-    ? std::clamp(to_goal / slowdown_distance_, 0.25, 1.0)
-    : 1.0;
+  if (params_.slowdown_distance > 0.0 && to_goal < params_.slowdown_distance) {
+    const double approach = params_.max_speed * to_goal / params_.slowdown_distance;
+    target_speed = std::min(target_speed, std::max(approach, params_.min_speed));
+  }
 
-  cmd.linear.x = linear_speed_ * speed_scale;
-  cmd.angular.z = std::clamp(cmd.linear.x * curvature, -max_angular_speed_, max_angular_speed_);
+  if (target_speed > speed_) {
+    speed_ = std::min(target_speed, speed_ + params_.accel * dt);
+  } else {
+    speed_ = std::max(target_speed, speed_ - params_.decel * dt);
+  }
+
+  cmd.linear.x = speed_;
+  cmd.angular.z = std::clamp(speed_ * curvature, -params_.max_angular_speed, params_.max_angular_speed);
   return cmd;
 }
 

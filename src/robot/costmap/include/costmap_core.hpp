@@ -16,19 +16,26 @@ namespace robot
 //
 // The grid lives in the laser's own frame: the robot sits at the centre and
 // +x points along the laser's zero angle. Every scan rebuilds the grid from
-// scratch, so it only ever describes what the laser can see right now. Cells
-// are -1 (unknown), 0 (free), 100 (obstacle) or an inflation cost in between.
+// scratch, so it only ever describes what the laser can see right now.
+//
+// Cell values: -1 unknown, 0 free, 100 a laser hit, 99 anywhere the robot's
+// body would overlap an obstacle (the lethal disc), and a decaying cost
+// beyond that so planners keep their distance without being forbidden.
 class CostmapCore {
   public:
-    // Constructor, we pass in the node's RCLCPP logger to enable logging to terminal
     explicit CostmapCore(const rclcpp::Logger& logger);
 
-    // Sizes the grid. Must be called once before processScan.
-    // The origin is chosen so the robot is in the middle of the grid.
-    void configure(double resolution, int width, int height, double inflation_radius);
+    // Sizes the grid and builds the inflation kernel. Must be called once
+    // before processScan. Radii are in metres; decay is the exponential
+    // falloff rate applied past the lethal radius.
+    void configure(
+      double resolution,
+      int width,
+      int height,
+      double lethal_radius,
+      double inflation_radius,
+      double decay);
 
-    // Rebuilds the grid from one scan: free space along every beam, an
-    // obstacle at every hit, then an inflation band around each obstacle.
     void processScan(const sensor_msgs::msg::LaserScan& scan);
 
     const nav_msgs::msg::OccupancyGrid& grid() const { return grid_; }
@@ -50,13 +57,14 @@ class CostmapCore {
     // cell itself is left untouched so an obstacle can still be placed there.
     void traceFree(int x0, int y0, int x1, int y1);
 
-    // Precomputes the cost falloff disc that gets stamped on every obstacle.
     void buildInflationKernel();
     void inflate(const std::vector<std::pair<int, int>>& obstacles);
 
     nav_msgs::msg::OccupancyGrid grid_;
     std::vector<KernelCell> kernel_;
+    double lethal_radius_;
     double inflation_radius_;
+    double decay_;
     rclcpp::Logger logger_;
 };
 

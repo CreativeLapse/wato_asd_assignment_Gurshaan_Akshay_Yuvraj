@@ -4,7 +4,9 @@ costmap_node:
     costmap_topic: "/costmap"   # OccupancyGrid output, in the laser frame
 
     costmap:
-      resolution: 0.4       # m per cell (finer than the global map)
-      width: 120            # cells -> 48 m across, robot in the centre
-      height: 120
-      inflation_radius: 1.0 # m, cost falls off linearly to 0 at this distance
+      resolution: 0.2       # m per cell
+      width: 200            # cells -> 40 m across, covers the 20 m lidar range
+      height: 200
+      lethal_radius: 1.0    # m, cells this close to a hit are impassable (robot half-width 0.7 + margin)
+      inflation_radius: 2.5 # m, cost decays to nothing at this distance
+      decay: 1.5            # 1/m, how quickly cost falls off past the lethal radius

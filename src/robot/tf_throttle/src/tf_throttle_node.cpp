@@ -12,11 +12,12 @@ namespace robot
 
 // Gazebo's pose publisher streams transforms at up to 1 kHz, far more than
 // Foxglove or our nodes can use. This node keeps the newest transform for
-// every frame it hears about and republishes the whole set at a fixed rate,
-// so the stream is thinned without any frame ever being dropped.
+// every frame it hears about and republishes the whole set at a fixed rate
+// whenever something new has arrived, so the stream is thinned without any
+// frame ever being dropped.
 class TfThrottleNode : public rclcpp::Node {
   public:
-    TfThrottleNode() : Node("tf_throttle")
+    TfThrottleNode() : Node("tf_throttle"), dirty_(false)
     {
       const std::string input_topic = this->declare_parameter<std::string>("input_topic", "/tf_raw");
       const std::string output_topic = this->declare_parameter<std::string>("output_topic", "/tf");
@@ -38,30 +39,32 @@ class TfThrottleNode : public rclcpp::Node {
     {
       // A child frame has exactly one parent, so its name identifies the transform.
       for (const auto& transform : msg->transforms) {
-        pending_[transform.child_frame_id] = transform;
+        latest_[transform.child_frame_id] = transform;
       }
+      dirty_ = true;
     }
 
     void onTimer()
     {
-      if (pending_.empty()) {
+      if (!dirty_) {
         return;
       }
       tf2_msgs::msg::TFMessage out;
-      out.transforms.reserve(pending_.size());
-      for (const auto& [child_frame, transform] : pending_) {
+      out.transforms.reserve(latest_.size());
+      for (const auto& [child_frame, transform] : latest_) {
         out.transforms.push_back(transform);
       }
       pub_->publish(out);
-      pending_.clear();
+      dirty_ = false;
     }
 
     rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr sub_;
     rclcpp::Publisher<tf2_msgs::msg::TFMessage>::SharedPtr pub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
-    // Newest transform per child frame since the last publish.
-    std::map<std::string, geometry_msgs::msg::TransformStamped> pending_;
+    // Newest transform seen for each child frame.
+    std::map<std::string, geometry_msgs::msg::TransformStamped> latest_;
+    bool dirty_;
 };
 
 }  // namespace robot

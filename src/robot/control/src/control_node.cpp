@@ -8,22 +8,16 @@ ControlNode::ControlNode()
   : Node("control"),
     control_(robot::ControlCore(this->get_logger())),
     control_period_ms_(0),
-    lookahead_distance_(0.0),
-    linear_speed_(0.0),
-    max_angular_speed_(0.0),
-    goal_tolerance_(0.0),
-    turn_in_place_angle_(0.0),
-    slowdown_distance_(0.0),
+    odom_timeout_(0.0),
     have_odom_(false),
     robot_x_(0.0),
     robot_y_(0.0),
     robot_yaw_(0.0),
+    last_odom_time_(0, 0, RCL_ROS_TIME),
     announced_arrival_(false)
 {
   loadParameters();
-  control_.configure(
-    lookahead_distance_, linear_speed_, max_angular_speed_,
-    goal_tolerance_, turn_in_place_angle_, slowdown_distance_);
+  control_.configure(params_);
 
   path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
     path_topic_, 10, std::bind(&ControlNode::onPath, this, std::placeholders::_1));
@@ -34,8 +28,8 @@ ControlNode::ControlNode()
   timer_ = this->create_wall_timer(
     std::chrono::milliseconds(control_period_ms_), std::bind(&ControlNode::onTimer, this));
 
-  RCLCPP_INFO(this->get_logger(), "Control node ready: %.2f m/s, lookahead %.2f m",
-              linear_speed_, lookahead_distance_);
+  RCLCPP_INFO(this->get_logger(), "Control node ready: up to %.2f m/s, lookahead %.2f-%.2f m",
+              params_.max_speed, params_.lookahead_min, params_.lookahead_max);
 }
 
 void ControlNode::loadParameters()
@@ -44,12 +38,23 @@ void ControlNode::loadParameters()
   odom_topic_ = this->declare_parameter<std::string>("odom_topic", "/odom/filtered");
   cmd_vel_topic_ = this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
   control_period_ms_ = this->declare_parameter<int>("control_period_ms", 100);
-  lookahead_distance_ = this->declare_parameter<double>("lookahead_distance", 1.0);
-  linear_speed_ = this->declare_parameter<double>("linear_speed", 0.5);
-  max_angular_speed_ = this->declare_parameter<double>("max_angular_speed", 1.0);
-  goal_tolerance_ = this->declare_parameter<double>("goal_tolerance", 0.2);
-  turn_in_place_angle_ = this->declare_parameter<double>("turn_in_place_angle", 0.8);
-  slowdown_distance_ = this->declare_parameter<double>("slowdown_distance", 1.0);
+  odom_timeout_ = this->declare_parameter<double>("odom_timeout", 0.5);
+
+  robot::ControlParams defaults;
+  params_.max_speed = this->declare_parameter<double>("max_speed", defaults.max_speed);
+  params_.min_speed = this->declare_parameter<double>("min_speed", defaults.min_speed);
+  params_.max_angular_speed = this->declare_parameter<double>("max_angular_speed", defaults.max_angular_speed);
+  params_.accel = this->declare_parameter<double>("accel", defaults.accel);
+  params_.decel = this->declare_parameter<double>("decel", defaults.decel);
+  params_.lookahead_min = this->declare_parameter<double>("lookahead_min", defaults.lookahead_min);
+  params_.lookahead_max = this->declare_parameter<double>("lookahead_max", defaults.lookahead_max);
+  params_.lookahead_gain = this->declare_parameter<double>("lookahead_gain", defaults.lookahead_gain);
+  params_.curvature_gain = this->declare_parameter<double>("curvature_gain", defaults.curvature_gain);
+  params_.turn_enter_angle = this->declare_parameter<double>("turn_enter_angle", defaults.turn_enter_angle);
+  params_.turn_exit_angle = this->declare_parameter<double>("turn_exit_angle", defaults.turn_exit_angle);
+  params_.turn_gain = this->declare_parameter<double>("turn_gain", defaults.turn_gain);
+  params_.slowdown_distance = this->declare_parameter<double>("slowdown_distance", defaults.slowdown_distance);
+  params_.goal_tolerance = this->declare_parameter<double>("goal_tolerance", defaults.goal_tolerance);
 }
 
 void ControlNode::onPath(const nav_msgs::msg::Path::SharedPtr path)
@@ -68,6 +73,7 @@ void ControlNode::onOdom(const nav_msgs::msg::Odometry::SharedPtr odom)
   robot_x_ = odom->pose.pose.position.x;
   robot_y_ = odom->pose.pose.position.y;
   robot_yaw_ = yawFromQuaternion(odom->pose.pose.orientation);
+  last_odom_time_ = this->now();
   have_odom_ = true;
 }
 
@@ -77,9 +83,15 @@ void ControlNode::onTimer()
     return;
   }
 
-  // computeCommand returns all zeros when there's nothing to follow, so the
-  // robot is told to stop rather than left coasting on its last command.
-  geometry_msgs::msg::Twist cmd = control_.computeCommand(robot_x_, robot_y_, robot_yaw_);
+  // Always publish something: zeros tell the robot to stop rather than
+  // leaving it coasting on its last command.
+  geometry_msgs::msg::Twist cmd;
+  if ((this->now() - last_odom_time_).seconds() > odom_timeout_) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                         "Odometry is stale; holding the robot still.");
+  } else {
+    cmd = control_.computeCommand(robot_x_, robot_y_, robot_yaw_, control_period_ms_ / 1000.0);
+  }
 
   if (control_.hasPath() && control_.goalReached(robot_x_, robot_y_) && !announced_arrival_) {
     RCLCPP_INFO(this->get_logger(), "Reached the end of the path.");
