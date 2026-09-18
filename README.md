@@ -16,7 +16,8 @@ software is four ROS 2 Humble nodes that pass data down a pipeline:
 
 The costmap node (`src/robot/costmap`) turns each laser scan into a 40 m
 square grid of 0.2 m cells centred on the robot. Every beam is ray-traced to
-mark free space and each hit becomes an obstacle. Around each hit it draws a
+mark free space, with extra rays between beams that have spread more than a
+cell apart, and each hit becomes an obstacle. Around each hit it draws a
 1 m lethal disc, sized to the robot's body, and lets the cost decay out to
 2.5 m. That way the planner prefers open space but can still get close to a
 wall when it has to.
@@ -87,7 +88,7 @@ pose and the planner and control logs side by side.
 
 ## Running the unit tests
 
-The core libraries have gtest suites, 37 tests across the four packages, and
+The core libraries have gtest suites, 38 tests across the four packages, and
 the robot image build runs them. To run them yourself inside the robot
 container:
 

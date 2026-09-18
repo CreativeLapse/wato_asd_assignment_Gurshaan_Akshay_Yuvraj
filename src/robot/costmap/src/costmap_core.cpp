@@ -79,27 +79,31 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
   int robot_cy = 0;
   worldToCell(0.0, 0.0, robot_cx, robot_cy);
 
-  std::vector<std::pair<int, int>> obstacles;
-  obstacles.reserve(scan.ranges.size());
-
+  // A beam that never hit anything still clears the cells out to the
+  // sensor's reach; it just contributes no obstacle. Bad readings get a
+  // negative range and are skipped.
+  std::vector<double> ranges(scan.ranges.size(), -1.0);
   for (size_t i = 0; i < scan.ranges.size(); ++i) {
-    const double angle = scan.angle_min + i * scan.angle_increment;
-    double range = scan.ranges[i];
-
+    const double range = scan.ranges[i];
     if (std::isnan(range) || range < scan.range_min) {
       continue;
     }
+    ranges[i] = (std::isfinite(range) && range <= scan.range_max) ? range : scan.range_max;
+  }
 
-    // A beam that never hit anything still clears the cells out to the
-    // sensor's reach; it just contributes no obstacle.
-    const bool hit = std::isfinite(range) && range <= scan.range_max;
-    if (!hit) {
-      range = scan.range_max;
+  std::vector<std::pair<int, int>> obstacles;
+  obstacles.reserve(scan.ranges.size());
+
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    if (ranges[i] < 0.0) {
+      continue;
     }
+    const double angle = scan.angle_min + i * scan.angle_increment;
+    const bool hit = ranges[i] < scan.range_max;
 
     int end_cx = 0;
     int end_cy = 0;
-    worldToCell(range * std::cos(angle), range * std::sin(angle), end_cx, end_cy);
+    worldToCell(ranges[i] * std::cos(angle), ranges[i] * std::sin(angle), end_cx, end_cy);
     traceFree(robot_cx, robot_cy, end_cx, end_cy);
 
     if (hit && inBounds(end_cx, end_cy)) {
@@ -111,7 +115,36 @@ void CostmapCore::processScan(const sensor_msgs::msg::LaserScan& scan)
     }
   }
 
+  fillBetweenBeams(scan, ranges, robot_cx, robot_cy);
   inflate(obstacles);
+}
+
+void CostmapCore::fillBetweenBeams(
+  const sensor_msgs::msg::LaserScan& scan,
+  const std::vector<double>& ranges,
+  int robot_cx,
+  int robot_cy)
+{
+  // Far from the robot, neighbouring beams are more than a cell apart, so
+  // tracing only along the beams leaves a speckle of unknown cells between
+  // them. Trace extra rays through each gap, out to the nearer of the two
+  // beams so nothing behind an obstacle gets cleared.
+  const double res = grid_.info.resolution;
+  for (size_t i = 0; i + 1 < ranges.size(); ++i) {
+    if (ranges[i] < 0.0 || ranges[i + 1] < 0.0) {
+      continue;
+    }
+    const double range = std::min(ranges[i], ranges[i + 1]);
+    const int extra = static_cast<int>(std::ceil(scan.angle_increment * range / res)) - 1;
+    for (int k = 1; k <= extra; ++k) {
+      const double angle = scan.angle_min +
+        (i + static_cast<double>(k) / (extra + 1)) * scan.angle_increment;
+      int end_cx = 0;
+      int end_cy = 0;
+      worldToCell(range * std::cos(angle), range * std::sin(angle), end_cx, end_cy);
+      traceFree(robot_cx, robot_cy, end_cx, end_cy);
+    }
+  }
 }
 
 void CostmapCore::traceFree(int x0, int y0, int x1, int y1)

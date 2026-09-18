@@ -57,6 +57,14 @@ class CostmapCore {
     // cell itself is left untouched so an obstacle can still be placed there.
     void traceFree(int x0, int y0, int x1, int y1);
 
+    // Traces extra rays between neighbouring beams wherever they have
+    // spread more than a cell apart, so distant free space has no gaps.
+    void fillBetweenBeams(
+      const sensor_msgs::msg::LaserScan& scan,
+      const std::vector<double>& ranges,
+      int robot_cx,
+      int robot_cy);
+
     void buildInflationKernel();
     void inflate(const std::vector<std::pair<int, int>>& obstacles);
 

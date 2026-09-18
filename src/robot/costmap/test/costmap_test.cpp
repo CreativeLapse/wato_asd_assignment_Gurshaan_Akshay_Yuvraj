@@ -93,6 +93,29 @@ TEST(CostmapTest, InflationNeverLowersACell)
   EXPECT_EQ(costmap.cellCost(17, 10), 100);
 }
 
+TEST(CostmapTest, FillsTheGapBetweenDivergingBeams)
+{
+  // 40x40 grid at 0.5 m, origin (-10, -10), robot in cell (20, 20).
+  robot::CostmapCore costmap(rclcpp::get_logger("costmap_test"));
+  costmap.configure(0.5, 40, 40, 0.5, 1.0, 2.0);
+
+  // Two beams 0.2 rad apart hitting at 8 m: at that range they are 1.6 m
+  // apart, so cells between them would stay unknown without extra rays.
+  sensor_msgs::msg::LaserScan scan;
+  scan.angle_min = 0.0;
+  scan.angle_max = 0.2;
+  scan.angle_increment = 0.2;
+  scan.range_min = 0.1;
+  scan.range_max = 10.0;
+  scan.ranges = {8.0f, 8.0f};
+  costmap.processScan(scan);
+
+  // A cell at bearing 0.1 rad, 7 m out: world (6.97, 0.70) -> cell (33, 21).
+  EXPECT_EQ(costmap.cellCost(33, 21), 0);
+  // Nothing past the hits gets cleared.
+  EXPECT_EQ(costmap.cellCost(38, 21), -1);
+}
+
 TEST(CostmapTest, InfiniteBeamClearsWithoutObstacle)
 {
   auto costmap = makeCostmap();
